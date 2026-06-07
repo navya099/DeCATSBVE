@@ -615,8 +615,31 @@ class AutoPoleApp(tk.Tk):
     def save(self):
         try:
             # 원본 save 로직 동일
+            self.runner.polesaver_main = BVECSV(self.runner.poledata['main'], self.runner.wire_data['main'],
+                                                track_index=0)
+            t = self.runner.polesaver_main.create_pole_csv()  # 본선 저장
+            t2 = self.runner.polesaver_main.create_wire_csv()
             main_path = askdirectory(title='저장 경로 선택')
             if main_path:
+                if not self.runner.pole_path_main:
+                    # 기본 파일명 지정
+                    self.runner.pole_path_main = os.path.join(main_path, '전주.txt')
+                    self.runner.wire_path_main = os.path.join(main_path, '전차선.txt')
+                write_to_file(self.runner.pole_path_main, t)
+                write_to_file(self.runner.wire_path_main, t2)
+                if self.runner.track_mode == "double":
+                    self.runner.polesaver_sub = BVECSV(self.runner.poledata['sub'], self.runner.wire_data['sub'],
+                                                       track_index=1)
+                    s = self.runner.polesaver_sub.create_pole_csv()  # 본선 저장
+                    s2 = self.runner.polesaver_sub.create_wire_csv()
+                    if not self.runner.pole_path_sub:
+                        # 기본 파일명 지정
+                        self.runner.pole_path_sub = os.path.join(main_path, '상선전주.txt')
+                        self.runner.wire_path_sub = os.path.join(main_path, '상선전차선.txt')
+
+                    write_to_file(self.runner.pole_path_sub, s)
+                    write_to_file(self.runner.wire_path_sub, s2)
+                self.runner.log(f"txt 저장 성공!")
                 self._set_status("CSV 저장 완료", "success")
                 self.log_append(f"✅ CSV 저장 완료 → {main_path}", "SUCCESS")
             else:
