@@ -23,8 +23,10 @@ class MASTBuilder:
         #전주용 밴드 2개
         # 밴드
         accessories = []
+        speed = dataprocessor.get_design_speed()
         if pole.section is None:
-             size = 'P10'
+
+             size = 'P10' if speed == 150 or speed == 250 else 'H250'
              accessories += AccessoryBuilder.build(dataprocessor, idxlib, '가동브래킷용', size, pole.structure, rotation,
                                                    pole.gauge)
              accessories += AccessoryBuilder.build(dataprocessor, idxlib, '완철용', size, pole.structure, rotation,
@@ -35,7 +37,7 @@ class MASTBuilder:
                      accessories += AccessoryBuilder.build(dataprocessor, idxlib, key, size, pole.structure, rotation,
                                                            pole.gauge)
         else:
-            size ='P12'
+            size ='P12'if speed == 150 or speed == 250 else 'H300'
             accessories += AccessoryBuilder.build(dataprocessor, idxlib, '완철용', size, pole.structure, rotation,
                                                pole.gauge)
 
