@@ -27,7 +27,7 @@ class DatasetGetter:
     def get_spreader_idx(self, current_structure, length: str):
         """평행구간 평행틀 인덱스 반환"""
         spreader_dictionary = self.dataset['spreader']
-        spreader_values = spreader_dictionary.get(current_structure, (0, 0))
+        spreader_values = spreader_dictionary.get(current_structure, {})
         return spreader_values.get(length, None)
 
     def get_bracket_codes(self, bracket_type: str, current_structure: str, base_type: str | None = None):
@@ -42,8 +42,8 @@ class DatasetGetter:
             if base_type:
                 return data[base_type]
             return data
-        except KeyError:
-            raise ValueError(f"지원하지 않는 브래킷 타입/구조물/방향입니다: {bracket_type}, {current_structure}, {base_type}")
+        except KeyError as e:
+            raise ValueError(f"지원하지 않는 브래킷 타입/구조물/방향입니다: {bracket_type}, {current_structure}, {base_type}") from e
 
 
     def get_fittings(self):

@@ -111,8 +111,8 @@ class BVECSV:
                     write_equipment(pos, eqs)
 
                 elif section in ['에어섹션1구간_2호주', '에어섹션1구간_3호주', '에어섹션1구간_4호주_S','에어섹션1구간_4호주_D', '에어섹션2구간_1호주', '에어섹션2구간_2호주', '에어섹션2구간_3호주']:
-                    poss = (pos - 0.528, pos + 0.528) if section in ['에어섹션1구간_2호주', '에어섹션1구간_3호주', '에어섹션1구간_4호주_S','에어섹션1구간_4호주_D', '에어섹션2구간_1호주', '에어섹션2구간_2호주', '에어섹션2구간_3호주'] else (
-                    pos - 0.8, pos + 0.8)
+                    # 에어섹션 평행개소는 모두 ±0.528 오프셋 (elif 조건과 동일 목록이라 else 분기는 도달 불가였음)
+                    poss = (pos - 0.528, pos + 0.528)
                     write_mast(pos, mast)
                     write_mast_accessories(pos, mast)
                     write_base(pos, mast)

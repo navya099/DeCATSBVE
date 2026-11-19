@@ -1,6 +1,7 @@
 from core.structure.define_structure import apply_brokenchain_to_structure
 from file_io.filemanager import load_structure_data, load_curve_data, load_pitch_data, load_coordinates
 from shapely.geometry.linestring import LineString
+from utils.math_util import clear_geometry_caches
 
 class BaseRunner:
     def __init__(self):
@@ -117,7 +118,9 @@ class BaseRunner:
         )
         if not self.polyline:
             return
+
     def create_dictionary_by_track(self):
+        clear_geometry_caches()
         self.polyline_with_sta = [(i * 25, *values) for i, values in enumerate(self.polyline)]
 
         # LineString 생성

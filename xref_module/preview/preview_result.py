@@ -1,4 +1,8 @@
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from xref_module.preview.layer_object import PreviewLayerObject
 
 
 @dataclass

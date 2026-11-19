@@ -26,9 +26,12 @@ def parse_pitch(filepath):
 
 def parse_polyline(filepath):
     points = []
-    with open(filepath, 'r') as file:
+    with open(filepath, 'r', encoding='utf-8') as file:
         for line in file:
-            x, y, z = map(float, line.strip().split(','))
+            line = line.strip()
+            if not line:
+                continue  # 빈 줄(파일 끝 개행 등) 무시
+            x, y, z = map(float, line.split(','))
             points.append((x, y, z))
     return points
 
@@ -42,4 +45,4 @@ def safe_loader(loader_func, file_path, fail_msg):
             raise ValueError(f"{fail_msg}: 데이터가 비어 있습니다.")
         return data
     except Exception as e:
-        raise RuntimeError(f"{fail_msg}: {e}")
+        raise RuntimeError(f"{fail_msg}: {e}") from e

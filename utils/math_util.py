@@ -1,9 +1,26 @@
 import math
 from functools import lru_cache
 
-#전역변수
+# 전역 캐시: 선형(polyline) 객체별로 분리해서 저장한다.
+# 측점(pos)만 키로 쓰면 본선/상선처럼 서로 다른 선형이 같은 측점 값을 공유해버리므로
+# id(polyline) 를 함께 키로 사용한다. 원본 polyline 참조를 함께 보관해 id 재사용을 막는다.
 elevation_cache = {}
 interpolation_cache = {}
+
+
+def _get_polyline_cache(cache, polyline):
+    key = id(polyline)
+    entry = cache.get(key)
+    if entry is None or entry[0] is not polyline:
+        entry = (polyline, {})
+        cache[key] = entry
+    return entry[1]
+
+
+def clear_geometry_caches():
+    """선형 데이터가 바뀌었을 때(재실행 등) 보간/고도 캐시를 비운다."""
+    elevation_cache.clear()
+    interpolation_cache.clear()
 
 @lru_cache(maxsize=None)
 def calculate_bearing(x1, y1, x2, y2):
@@ -41,11 +58,10 @@ def calculate_offset_point(vector, point_a, offset_distance):
     return offset_a_xy
 
 def interpolate_cached(polyline_with_sta, pos):
-
-
-    if pos not in interpolation_cache:
-        interpolation_cache[pos] = interpolate_coordinates(polyline_with_sta, pos)
-    return interpolation_cache[pos]
+    cache = _get_polyline_cache(interpolation_cache, polyline_with_sta)
+    if pos not in cache:
+        cache[pos] = interpolate_coordinates(polyline_with_sta, pos)
+    return cache[pos]
 
 def interpolate_coordinates(polyline, target_sta):
     """
@@ -59,12 +75,14 @@ def interpolate_coordinates(polyline, target_sta):
     for i in range(len(polyline) - 1):
         sta1, x1, y1, z1 = polyline[i]
         sta2, x2, y2, z2 = polyline[i + 1]
-        v1 = calculate_bearing(x1, y1, x2, y2)
-        # target_sta가 두 점 사이에 있는 경우 보간 수행
-        if sta1 <= target_sta < sta2:
-            t = abs(target_sta - sta1)
+        # target_sta가 두 점 사이에 있는 경우 보간 수행 (마지막 점 포함)
+        is_last = i == len(polyline) - 2
+        if sta1 <= target_sta < sta2 or (is_last and target_sta == sta2):
+            v1 = calculate_bearing(x1, y1, x2, y2)
+            t = target_sta - sta1
             x, y = calculate_destination_coordinates(x1, y1, v1, t)
-            z = z1 + t * (z2 - z1)
+            ratio = t / (sta2 - sta1) if sta2 != sta1 else 0.0
+            z = z1 + ratio * (z2 - z1)
             return (x, y, z), (x1, y1, z1), v1
 
     raise ValueError(f"target_sta {target_sta}가 polyline 범위({polyline[0][0]} ~ {polyline[-1][0]})를 벗어났습니다.")
@@ -77,8 +95,9 @@ def calculate_destination_coordinates(x1, y1, bearing, distance):
     return x2, y2
 
 def get_elevation_pos(pos, polyline_with_sta):
-    if pos in elevation_cache:
-        return elevation_cache[pos]
+    cache = _get_polyline_cache(elevation_cache, polyline_with_sta)
+    if pos in cache:
+        return cache[pos]
 
     # 범위 체크
     if pos < polyline_with_sta[0][0] or pos > polyline_with_sta[-1][0]:
@@ -92,7 +111,7 @@ def get_elevation_pos(pos, polyline_with_sta):
 
         if sta1 <= pos <= sta2:
             new_z = calculate_height_at_new_distance(z1, z2, L, L_new)
-            elevation_cache[pos] = new_z
+            cache[pos] = new_z
             return new_z
 
     raise ValueError(f"pos {pos}에 대한 고도 값을 찾을 수 없습니다.")
