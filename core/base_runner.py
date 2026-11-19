@@ -1,7 +1,6 @@
 from core.structure.define_structure import apply_brokenchain_to_structure
 from file_io.filemanager import load_structure_data, load_curve_data, load_pitch_data, load_coordinates
-from shapely.geometry.linestring import LineString
-from utils.math_util import clear_geometry_caches
+from utils.math_util import clear_geometry_caches, offset_polyline
 
 class BaseRunner:
     def __init__(self):
@@ -123,19 +122,11 @@ class BaseRunner:
         clear_geometry_caches()
         self.polyline_with_sta = [(i * 25, *values) for i, values in enumerate(self.polyline)]
 
-        # LineString 생성
         if self.track_mode == 'double':
-
-            line = LineString(self.polyline)
-            # 오프셋 적용
-            if self.track_direction['main'] == -1:
-                direction = 'right'
-            else:
-                direction = 'left'
-            offset_line = line.parallel_offset(abs(self.track_distance), direction, join_style=2)
-            # 다시 분해후 재결합
-            offset_polyline = offset_line.coords
-            self.offset_line_with_25 = [(i * 25, *values) for i, values in enumerate(offset_polyline)]
+            # BVE 레일 오프셋과 같은 방식: 각 블록 진행방향의 수직으로 오프셋 (측점·고도 유지)
+            # 본선 전주가 좌측(-1)이면 상선은 우측(+x)
+            side = 1 if self.track_direction['main'] == -1 else -1
+            self.offset_line_with_25 = offset_polyline(self.polyline_with_sta, side * abs(self.track_distance))
 
         ######트랙별 처리###### todo
         # 현재는 두 트랙이 동일하다고 가정(즉 pos와 모든 구조물을 공유함)

@@ -87,6 +87,33 @@ def interpolate_coordinates(polyline, target_sta):
 
     raise ValueError(f"target_sta {target_sta}가 polyline 범위({polyline[0][0]} ~ {polyline[-1][0]})를 벗어났습니다.")
 
+def offset_polyline(polyline_with_sta, distance):
+    """선형을 블록 진행방향의 수직으로 distance 만큼 평행이동한 선형을 반환.
+
+    BVE 의 Rail x 오프셋과 같은 방식이다 (양수 = 진행방향 우측).
+    측점(sta)과 고도(z)는 그대로 유지하므로 블록 단위 측점이 원본과 1:1 로 대응한다.
+    각 점의 방향은 그 점에서 다음 점으로 향하는 방위(마지막 점은 직전 구간)를 사용한다.
+
+    :param polyline_with_sta: [(sta, x, y, z), ...]
+    :param distance: 오프셋 거리 (m, 우측 +)
+    :return: [(sta, x, y, z), ...]
+    """
+    n = len(polyline_with_sta)
+    if n < 2:
+        raise ValueError("오프셋하려면 선형 점이 2개 이상 필요합니다.")
+    result = []
+    for i, (sta, x, y, z) in enumerate(polyline_with_sta):
+        if i < n - 1:
+            _, x1, y1, _ = polyline_with_sta[i]
+            _, x2, y2, _ = polyline_with_sta[i + 1]
+        else:
+            _, x1, y1, _ = polyline_with_sta[i - 1]
+            _, x2, y2, _ = polyline_with_sta[i]
+        theta = math.atan2(y2 - y1, x2 - x1)
+        result.append((sta, x + distance * math.sin(theta), y - distance * math.cos(theta), z))
+    return result
+
+
 def calculate_destination_coordinates(x1, y1, bearing, distance):
     # Calculate the destination coordinates given a starting point, bearing, and distance in Cartesian coordinates
     angle = math.radians(bearing)

@@ -78,3 +78,17 @@ def test_max_span_unsupported_speed_raises():
         get_max_span_straight(200)
     with pytest.raises(ValueError):
         get_max_span_tunnel(200)
+
+
+def test_offset_polyline_keeps_station_and_z():
+    from utils.math_util import offset_polyline
+    line = make_line(z0=100.0, dz=1.0)  # +x 방향
+    right = offset_polyline(line, 4.3)
+    assert [p[0] for p in right] == [p[0] for p in line]  # 측점 1:1 유지
+    assert [p[3] for p in right] == [p[3] for p in line]  # 고도 유지
+    assert all(p[2] == pytest.approx(-4.3) for p in right)  # +x 진행 시 우측 = -y
+    left = offset_polyline(line, -4.3)
+    assert all(p[2] == pytest.approx(4.3) for p in left)
+    # 상선 선형으로 보간/고도 계산이 동작해야 함 (이전: z 가 빠져 unpack 에러)
+    interpolate_cached(right, 30)
+    assert get_elevation_pos(30, right) == pytest.approx(101.2)
