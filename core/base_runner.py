@@ -1,5 +1,6 @@
 from core.structure.define_structure import apply_brokenchain_to_structure
 from file_io.filemanager import load_structure_data, load_curve_data, load_pitch_data, load_coordinates
+from core.alignment.rail_alignment import parse_rail_info, build_rail_alignment, visible_ranges
 from utils.math_util import clear_geometry_caches, offset_polyline
 
 class BaseRunner:
@@ -49,6 +50,9 @@ class BaseRunner:
         self.end_station = 0.0
         self.brokenchain = 0.0
         self.tunnel_direction: dict[str, int | None] = {'main': None, 'sub': None}
+        # 상선 선형을 BVEParser rail_info.txt 의 실제 레일 좌표로 만들 때 사용 (None 이면 일정 간격 오프셋)
+        self.rail_info_file_path = None
+        self.sub_rail_key: int | None = None
 
     def run(self):
         raise NotImplementedError("자식 클래스에서 구현하세요")
@@ -118,6 +122,26 @@ class BaseRunner:
         if not self.polyline:
             return
 
+    def _build_sub_alignment(self, fallback):
+        """rail_info 가 지정되면 실제 레일 좌표로, 아니면 일정 간격 오프셋으로 상선 선형 생성"""
+        # 구버전 pickle 로 불러온 runner 에는 속성이 없을 수 있음
+        rail_key = getattr(self, 'sub_rail_key', None)
+        path = getattr(self, 'rail_info_file_path', None)
+        if rail_key is None:
+            self.log(f"상선 선형: 일정 간격 오프셋 ({abs(self.track_distance)}m)")
+            return fallback
+        if not path:
+            raise ValueError("상선 레일번호가 지정됐지만 rail_info 파일 경로가 없습니다.")
+        rail_points, has_visibility = parse_rail_info(path, rail_key)
+        alignment = build_rail_alignment(self.polyline_with_sta, rail_points, fallback,
+                                         rail_key=rail_key, has_visibility=has_visibility)
+        if not has_visibility:
+            self.log(f"⚠️ rail_info 에 visible 열이 없습니다(구버전 파서). 레일 {rail_key} 를 전 구간 표시로 간주합니다.")
+        else:
+            ranges = visible_ranges(alignment)
+            self.log(f"상선 선형: rail_info 레일 {rail_key}, 표시 구간 {ranges}")
+        return alignment
+
     def create_dictionary_by_track(self):
         clear_geometry_caches()
         self.polyline_with_sta = [(i * 25, *values) for i, values in enumerate(self.polyline)]
@@ -126,7 +150,8 @@ class BaseRunner:
             # BVE 레일 오프셋과 같은 방식: 각 블록 진행방향의 수직으로 오프셋 (측점·고도 유지)
             # 본선 전주가 좌측(-1)이면 상선은 우측(+x)
             side = 1 if self.track_direction['main'] == -1 else -1
-            self.offset_line_with_25 = offset_polyline(self.polyline_with_sta, side * abs(self.track_distance))
+            fallback = offset_polyline(self.polyline_with_sta, side * abs(self.track_distance))
+            self.offset_line_with_25 = self._build_sub_alignment(fallback)
 
         ######트랙별 처리###### todo
         # 현재는 두 트랙이 동일하다고 가정(즉 pos와 모든 구조물을 공유함)

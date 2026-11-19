@@ -358,6 +358,12 @@ class AutoPoleApp(tk.Tk):
             fill="x", pady=(6, 0)
         )
 
+        # 상선 레일번호: 비우면 선로중심간격으로 일정 오프셋, 입력하면 rail_info.txt 의 실제 레일 좌표 사용
+        self.sub_rail_key = tk.StringVar(value="")
+        make_entry(c_body3, "상선 레일번호 (rail_info)", self.sub_rail_key, width=8).pack(
+            fill="x", pady=(6, 0)
+        )
+
         # ── 유틸리티 버튼 ──
         c_outer4, c_body4 = card(sidebar, "🔧 유틸리티")
         c_outer4.pack(fill="x", pady=4)
@@ -557,6 +563,7 @@ class AutoPoleApp(tk.Tk):
         coord_path  = os.path.join(folder, 'bve_coordinates.txt')
         curve_path  = os.path.join(folder, 'curve_info.txt')
         pitch_path  = os.path.join(folder, 'pitch_info.txt')
+        rail_info_path = os.path.join(folder, 'rail_info.txt')
         structue_path = askopenfilename(
             title='구조물 파일 열기',
             defaultextension=".xlsx",
@@ -567,6 +574,7 @@ class AutoPoleApp(tk.Tk):
             self.runner.curve_file_path     = curve_path
             self.runner.pitch_file_path     = pitch_path
             self.runner.structure_file_path = structue_path
+            self.runner.rail_info_file_path = rail_info_path if os.path.exists(rail_info_path) else None
         return True
 
     def _apply_track_settings(self):
@@ -585,6 +593,8 @@ class AutoPoleApp(tk.Tk):
                 self.runner.track_direction['sub'] = -1
 
             self.runner.track_distance = self.track_distance.get()
+            key = self.sub_rail_key.get().strip()
+            self.runner.sub_rail_key = int(key) if key else None  # 숫자가 아니면 ValueError
             # 복선 터널은 방향 반전
             self.runner.tunnel_direction['main'] = self.runner.track_direction['main'] * -1
             self.runner.tunnel_direction['sub'] = self.runner.track_direction['sub'] * -1

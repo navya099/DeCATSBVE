@@ -26,10 +26,10 @@ class WireProcessor:
             for i, pole in enumerate(poles[:-1]):
                 try:
                     # 마지막 pole은 next_pole 없음 → 예외 처리
-                    if i == len(poles) - 1:
-                        next_pole = None
-                    else:
-                        next_pole = poles[i + 1]
+                    next_pole = poles[i + 1]
+                    if next_pole.pos != pole.next_pos:
+                        # 다음 전주가 이 전주의 경간 끝이 아님 → 레일 단절 구간이므로 전선 없음
+                        continue
                     wire = WireData(pole.pos, pole.span, wires=[], track_name=track_name)
                     pitch_angle = change_permile_to_degree(pole.pitch)
                     # 본선/에어조인트 구간 전차선 처리
