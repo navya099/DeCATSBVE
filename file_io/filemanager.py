@@ -1,5 +1,3 @@
-import tkinter as tk
-from tkinter import filedialog
 from file_io.basedata_processor import safe_loader, parse_curve, parse_structure, parse_pitch, parse_polyline
 import os
 import pickle
@@ -20,7 +18,9 @@ def write_to_file(filename, lines):
     """리스트 데이터를 파일에 저장하는 함수"""
     try:
         # 디렉토리 자동 생성
-        os.makedirs(os.path.dirname(filename), exist_ok=True)
+        dirname = os.path.dirname(filename)
+        if dirname:  # 파일명만 주어진 경우 makedirs('') 에러 방지
+            os.makedirs(dirname, exist_ok=True)
 
         with open(filename, "w", encoding="utf-8") as f:
             f.writelines(lines)  # 리스트 데이터를 한 번에 파일에 작성
@@ -38,20 +38,20 @@ def load_poles(filename="poles.dat"):
         return pickle.load(f)
 
 def save_runner(runner, filename="runner.dat", version=1):
-    # runner 객체 자체를 저장
-    if hasattr(runner, "log_widget"):
-        runner.log_widget = None
-
-    with open(filename, "wb") as f:
-        pickle.dump({
-            "version": version,
-            "runner": runner
-        }, f)
+    # runner 객체 자체를 저장 (tk 위젯은 pickle 불가하므로 저장 중에만 분리 후 복원)
+    log_widget = getattr(runner, "log_widget", None)
+    runner.log_widget = None
+    try:
+        with open(filename, "wb") as f:
+            pickle.dump({
+                "version": version,
+                "runner": runner
+            }, f)
+    finally:
+        runner.log_widget = log_widget
 
 def load_runner(filename="runner.dat"):
     with open(filename, "rb") as f:
         data = pickle.load(f)
-    version = data.get("version", 1)
-    runner = data["runner"]
-    return runner
+    return data["runner"]
 

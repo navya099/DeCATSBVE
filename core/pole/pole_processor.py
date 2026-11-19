@@ -1,5 +1,6 @@
 from core.airjoint.airjoint_processor import AirJointProcessor
 from core.airjoint.aj_checker import check_isairjoint
+from core.alignment.rail_alignment import is_span_visible
 from core.alignment.define_funtion import iscurve, isslope
 from core.pole.normal_section_processor import NormalSectionProcessor
 from core.pole.poledata import PoleDATA
@@ -20,8 +21,10 @@ class PoleProcessor:
         poles = []
 
         for i in range(len(positions) - 1):
+            pos, next_pos = positions[i], positions[i + 1]
+            if not is_span_visible(polyline_with_sta, pos, next_pos):
+                continue  # 레일이 그려지지 않는 경간 (RailEnd 이후 등)
             try:
-                pos, next_pos = positions[i], positions[i + 1]
                 currentspan = next_pos - pos
                 current_structure = isbridge_tunnel(pos, structure_list)
                 next_structure = isbridge_tunnel(next_pos, structure_list)

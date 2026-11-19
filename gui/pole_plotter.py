@@ -128,7 +128,7 @@ class PlotPoleMap(tk.Frame):
 
         # 상선 선형
         if self.runner.track_mode == "double" and self.runner.offset_line_with_25:
-            points_sub = [(x, y) for _, x, y in self.runner.offset_line_with_25]
+            points_sub = [(p[1], p[2]) for p in self.runner.offset_line_with_25]
             segments_sub = [(points_sub[i], points_sub[i + 1]) for i in range(len(points_sub) - 1)]
             lc_sub = LineCollection(segments_sub, colors="blue", linewidths=1, linestyles="--", label="상선 선형")
             self.ax.add_collection(lc_sub)
