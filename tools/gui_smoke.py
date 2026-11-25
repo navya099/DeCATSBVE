@@ -382,6 +382,24 @@ if p.gauge != new_gauge or p.coord == old_coord or abs(p.mast.offset[0] - new_ga
     failures.append('건식게이지 변경(좌표·기둥 위치) 반영 안 됨')
 if (tuple(p.brackets[0].offset), p.brackets[0].rotation) != ((0.12, 0.34), 1.5):
     failures.append('건식게이지 변경 후 직접 편집한 브래킷이 사라짐')
+# 표 셀 편집: 전주를 다시 만들지 않고 직접 편집한 구성품 유지
+old_number, old_pos = p.post_number, p.pos
+ed.apply_cell_edit(p, 0, f'{old_number}A')
+ed.apply_cell_edit(p, 1, str(old_pos + 1))
+app.update()
+check(f'표 편집: 전주번호·측점 {old_pos}→{p.pos}')
+if p.post_number != f'{old_number}A' or p.pos != old_pos + 1:
+    failures.append('표 편집(전주번호·측점) 반영 안 됨')
+if (tuple(p.brackets[0].offset), p.brackets[0].rotation) != ((0.12, 0.34), 1.5):
+    failures.append('표 편집(측점) 후 직접 편집한 브래킷이 사라짐')
+try:
+    ed.apply_cell_edit(p, 0, runner.poledata['main'][0].post_number)
+    failures.append('중복 전주번호가 거부되지 않음')
+except ValueError:
+    pass
+ed.apply_cell_edit(p, 1, str(old_pos))
+ed.apply_cell_edit(p, 0, old_number)
+select('main', p.pos)
 pe.regenerate()
 check('전주 편집: 자동 구성으로 되돌리기')
 if tuple(p.brackets[0].offset) == (0.12, 0.34):

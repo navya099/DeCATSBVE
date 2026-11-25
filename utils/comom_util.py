@@ -1,5 +1,4 @@
 import re
-import random
 import math
 
 
@@ -149,7 +148,6 @@ def initialrize_tenstion_device(pos, gauge, currentspan, contact_height, system_
 
     """
     # 전선 각도
-    new_length = currentspan - tension_device_length  # 현재 span에서 장력장치까지의 거리
     pererall_d, vertical_offset = return_new_point(gauge, currentspan, tension_device_length)  # 선형 시작점에서 전선까지의 거리
 
     sta2 = pos + vertical_offset  # 전선 시작 측점

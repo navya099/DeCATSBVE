@@ -5,6 +5,7 @@ from tkinter.filedialog import askopenfilename
 from core.pole.manual_pole_processor import ManualPoleProcessor
 from core.structure.define_structure import isbridge_tunnel
 from core.model_rebuilder import alignment_for, rebuild
+from core.pole import pole_edit
 from event.events import MODEL_CHANGED, POLE_SELECTED, POLES_SELECTED, WIRE_SELECTED
 from gui.pole_add_ui import PoleADDUI
 from gui.pole_assembler import PoleEditor
@@ -123,9 +124,6 @@ class AutoPoleEditor(tk.Frame):
         if not selected_item:
             return
 
-        # 선택된 행의 values 가져오기
-        item = tree.item(selected_item[0])
-        values = item["values"]
 
         # load_selected 호출
         self.load_selected()
@@ -341,40 +339,23 @@ class AutoPoleEditor(tk.Frame):
                     prev_ewire.next_wire = ewire
                 prev_ewire = ewire
 
-    def save_edit(self, post_number, pos, gauge, section, base_type, side):
-        track = self._current_track()
-        poles = self.runner.poledata[track]
-        al = alignment_for(self.runner, track)
-
-        new_post_number = post_number
-        new_pos = pos
-        new_gauge = gauge
-        new_section = section
-        new_base_type = base_type
-        new_side = side
-
-        # PoleDATA 객체 생성 (필수 속성만, 나머지는 기본값)
-        new_pole = ManualPoleProcessor.create_pole(
-            al, self.runner.dataprocessor, self.runner.idxlib, self.runner.curvelist, self.runner.pitchlist,
-            self.runner.structure_list,
-            new_pos, new_post_number, new_gauge, new_section,
-            new_base_type, track, new_side)
-
-        # pos 기준으로 교체할 위치 찾기
-        replace_idx = None
-        for i, p in enumerate(poles):
-            if p.pos == self.original_pos:  # 기존 pos와 동일한 전주 찾기
-                replace_idx = i
-                break
-
-        if replace_idx is not None:
-            new_pole.uid = poles[replace_idx].uid  # 같은 전주 → 경간 키(전선 편집 내용) 유지
-            poles[replace_idx] = new_pole  # 기존 전주 대체
-            if self.selected_pole is not None and self.selected_pole.pole.pos == self.original_pos:
-                self.selected_pole.pole = new_pole  # 선택 유지
-
+    def apply_cell_edit(self, pole, col_index, text):
+        """표 셀 편집 반영: 0 전주번호, 1 측점, 3 건식게이지, 6 기본 타입. 반환: 안내 문구 목록"""
+        alignment = alignment_for(self.runner, pole.track)
+        notices = []
+        if col_index == 0:
+            pole_edit.rename(self.runner, pole, text)
+        elif col_index == 1:
+            notices = pole_edit.move_pole(self.runner, pole, float(text), alignment)
+        elif col_index == 3:
+            _, notices = pole_edit.set_gauge(self.runner, pole, float(text), alignment)
+        elif col_index == 6:
+            notices = pole_edit.set_base_type(self.runner, pole, text, alignment)
+        else:
+            raise ValueError('이 열은 편집할 수 없습니다.')
         self.commit_change()
-        return True
+        return notices
+
     def open_equipment_editor(self):
         """선택한 전주로 전주 상세 편집기 열기 (이후 편집기 선택을 따라감)"""
         return PoleEditor(self.runner, self.events, selection=self.selected_pole)
@@ -508,8 +489,8 @@ class AutoPoleEditor(tk.Frame):
         # 임시 Entry 생성
         col_index_dict = {
             0: tk.StringVar(value=old_value),
-            1: tk.IntVar(value=old_value),
-            3: tk.DoubleVar(value=old_value),
+            1: tk.StringVar(value=old_value),
+            3: tk.StringVar(value=old_value),
             5:tk.StringVar(value=old_value),
             6:tk.StringVar(value=old_value)
         }
@@ -526,44 +507,16 @@ class AutoPoleEditor(tk.Frame):
         entry.place(x=x, y=y, width=width, height=height)
 
         def save_and_validate(event=None):
-            new_value = edit_var.get()
-            values = list(item["values"])
-            values[col_index] = new_value
-            tree.item(row_id, values=values)
-            col_map = {
-                0: "post_number",
-                1: "pos",
-                3: "gauge",
-                5: "section",
-                6: "base_type"
-            }
+            """바뀐 항목만 반영 (전주를 새로 만들지 않아 구성품·전선 편집 유지)"""
+            new_value = str(edit_var.get()).strip()
+            names = {0: '전주번호', 1: '측점', 3: '건식게이지', 6: '기본 타입'}
             try:
-                # Treeview 전체 값에서 필요한 인자 추출
-                post_number = values[0]
-                pos = int(values[1])
-                gauge = float(values[3])
-                section = SectionType.parse(values[5])  # 일반개소/'None'/흐름방지 위치 → None
-                base_type = values[6]
-                side = -1 if gauge < 0 else 1
-                # 검증 로직 호출
-                self.save_edit(post_number, pos, gauge, section, base_type, side)
-                self.runner.log(f'전주 편집 성공! {col_map[col_index]}가 {new_value}로 변경되었습니다.')
-            except Exception as e:
-                code = str(e)
-                # 에러코드별 메시지 분기
-                if code == "NOT_NORMAL_SECTION":
-                    messagebox.showerror("전주 업데이트 실패", "지정한 위치는 일반 개소가 아닙니다.")
-                elif code == "SPAN_OUT_OF_RANGE":
-                    messagebox.showerror("전주 업데이트 실패", "경간이 지정된 spanlist에 없습니다.")
-                else:
-                    messagebox.showerror("전주 업데이트 실패", f"다음과 같은 오류가 발생했습니다: {code}")
-                # 원래 값 복원
-                info = self._editing_info
-                values = list(info["tree"].item(info["row_id"], "values"))
-                values[info["col_index"]] = info["old_value"]
-                info["tree"].item(info["row_id"], values=values)
-
-            # Entry는 임시 객체 → 그냥 날려버림
+                notices = self.apply_cell_edit(pole, col_index, new_value)
+                self.runner.log(f'전주 편집: {pole.post_number} {names[col_index]} → {new_value}')
+                if notices:
+                    messagebox.showinfo('전주 편집', '\n'.join(notices))
+            except (ValueError, tk.TclError) as e:
+                messagebox.showerror('전주 편집 실패', str(e))
             entry.destroy()
             self.refresh_tree()
         entry.bind("<Return>", save_and_validate)

@@ -1,4 +1,3 @@
-from core.bracket.fitting_data import FittingDATA
 from core.bracket.helper_bracket_create import BracketCreator
 from core.bracket.steady_arm_helper import SteadyArmHelper
 from utils.math_util import calculate_curve_stagger

@@ -17,7 +17,7 @@ from core.wire import wire_overrides as wo  # noqa: E402
 from enums.section_type import SectionType  # noqa: E402
 from tools import headless  # noqa: E402
 from tools.verify import load_main_line, wire_errors  # noqa: E402
-from vms.editable_pole import EditablePole  # noqa: E402
+from core.pole import pole_edit  # noqa: E402
 
 CASES = os.path.join(ROOT, 'tests', 'regression_cases')
 
@@ -109,15 +109,12 @@ def test_edit_survives_pole_move_and_reset_restores_output(span, tmp_path):
     quiet_rebuild(runner)
 
     al = alignment_for(runner, 'main')
-    ep = EditablePole(a, runner.structure_list, runner.curvelist, runner.pitchlist, al)
-    ep.prev_pole = EditablePole(poles[i - 1], runner.structure_list, runner.curvelist, runner.pitchlist, al)
-    ep.next_pole = EditablePole(poles[i + 1], runner.structure_list, runner.curvelist, runner.pitchlist, al)
-    ep.update(pos=a.pos + 1)
+    pole_edit.move_pole(runner, a, a.pos + 1, al)
     quiet_rebuild(runner)
     assert row(runner, a.pos, '전차선#0').end_point == (0.3, 5.3)  # uid 로 경간을 찾아 유지
     assert geometry_max_error_cm(runner) < 0.001                  # 각도는 새 위치 기준
 
-    ep.update(pos=a.pos - 1)
+    pole_edit.move_pole(runner, a, a.pos - 1, al)
     for pos in (poles[i - 1].pos, a.pos, poles[i + 1].pos):
         wo.reset_span(runner, 'main', pos)
     quiet_rebuild(runner)

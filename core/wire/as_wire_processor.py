@@ -10,6 +10,11 @@ class AirSectionWireProcessor:
         self.datap = datap
         self.al = al
 
+    def _offset(self, name):
+        """데이터셋 오프셋 (x, y)"""
+        value = self.datap.get_airsection_offset(name)
+        return value.get('x'), value.get('y')
+
     def run(self, pole, next_pole, wire, pitch_angle ,offset, cw_index):
         # 에어섹션 구간 처리
         # 무효전차선 정보 가져오기
@@ -47,18 +52,8 @@ class AirSectionWireProcessor:
 
     def process_section_start(self, pole, next_pole, wire, cw_index,icw_index, imw_index, pitch_angle):
 
-        f_end_x, f_end_y = self.datap.get_airsection_offset('F형_끝').get('x'), self.datap.get_airsection_offset(
-            'F형_끝').get('y')
-        aj_middle1_x, aj_middle1_y = self.datap.get_airsection_offset('AS형_중간1').get(
-            'x'), self.datap.get_airsection_offset('AS형_중간1').get('y')
-        aj_middle2_x, aj_middle2_y = self.datap.get_airsection_offset('AS형_중간2').get(
-            'x'), self.datap.get_airsection_offset('AS형_중간2').get('y')
-        aj_start_x, aj_start_y = self.datap.get_airsection_offset('AS형_시점').get(
-            'x'), self.datap.get_airsection_offset('AS형_시점').get('y')
-        f_start_x, f_start_y = self.datap.get_airsection_offset('F형_시점').get('x'), self.datap.get_airsection_offset(
-            'F형_시점').get('y')
-        aj_end_x, aj_end_y = self.datap.get_airsection_offset('AS형_끝').get('x'), self.datap.get_airsection_offset(
-            'AS형_끝').get('y')
+        aj_start_x, _ = self._offset('AS형_시점')
+        f_start_x, f_start_y = self._offset('F형_시점')
         # 일반 구간
         if pole.side == -1:
             aj_start_x *= 1
@@ -97,18 +92,10 @@ class AirSectionWireProcessor:
 
     def process_section_two(self, pole, next_pole, wire, cw_index, pitch_angle):
 
-        f_end_x, f_end_y = self.datap.get_airsection_offset('F형_끝').get('x'), self.datap.get_airsection_offset(
-            'F형_끝').get('y')
-        aj_middle1_x, aj_middle1_y = self.datap.get_airsection_offset('AS형_중간1').get(
-            'x'), self.datap.get_airsection_offset('AS형_중간1').get('y')
-        aj_middle2_x, aj_middle2_y = self.datap.get_airsection_offset('AS형_중간2').get(
-            'x'), self.datap.get_airsection_offset('AS형_중간2').get('y')
-        aj_start_x, aj_start_y = self.datap.get_airsection_offset('AS형_시점').get(
-            'x'), self.datap.get_airsection_offset('AS형_시점').get('y')
-        f_start_x, f_start_y = self.datap.get_airsection_offset('F형_시점').get('x'), self.datap.get_airsection_offset(
-            'F형_시점').get('y')
-        aj_end_x, aj_end_y = self.datap.get_airsection_offset('AS형_끝').get('x'), self.datap.get_airsection_offset(
-            'AS형_끝').get('y')
+        aj_middle1_x, _ = self._offset('AS형_중간1')
+        aj_middle2_x, _ = self._offset('AS형_중간2')
+        aj_start_x, _ = self._offset('AS형_시점')
+        f_start_x, f_start_y = self._offset('F형_시점')
 
         # 일반 구간
         if pole.side == -1:
@@ -151,18 +138,12 @@ class AirSectionWireProcessor:
         wire.add_insulator(insulator)
 
     def process_section_three(self, pole, next_pole, wire, cw_index, pitch_angle):
-        f_end_x, f_end_y = self.datap.get_airsection_offset('F형_끝').get('x'), self.datap.get_airsection_offset(
-            'F형_끝').get('y')
-        aj_middle1_x, aj_middle1_y = self.datap.get_airsection_offset('AS형_중간1').get(
-            'x'), self.datap.get_airsection_offset('AS형_중간1').get('y')
-        aj_middle2_x, aj_middle2_y = self.datap.get_airsection_offset('AS형_중간2').get(
-            'x'), self.datap.get_airsection_offset('AS형_중간2').get('y')
-        aj_start_x, aj_start_y = self.datap.get_airsection_offset('AS형_시점').get(
-            'x'), self.datap.get_airsection_offset('AS형_시점').get('y')
-        f_start_x, f_start_y = self.datap.get_airsection_offset('F형_시점').get('x'), self.datap.get_airsection_offset(
-            'F형_시점').get('y')
-        aj_end_x, aj_end_y = self.datap.get_airsection_offset('AS형_끝').get('x'), self.datap.get_airsection_offset(
-            'AS형_끝').get('y')
+        f_end_x, _ = self._offset('F형_끝')
+        aj_middle1_x, _ = self._offset('AS형_중간1')
+        aj_middle2_x, _ = self._offset('AS형_중간2')
+        aj_start_x, _ = self._offset('AS형_시점')
+        f_start_x, f_start_y = self._offset('F형_시점')
+        aj_end_x, _ = self._offset('AS형_끝')
 
         # 일반 구간
         if pole.side == -1:
@@ -205,18 +186,12 @@ class AirSectionWireProcessor:
             (aj_middle1_x, start_cw_height), (aj_end_x, end_cw_height), pitch_angle, label='무효->본선전차선')
         )
     def process_section_forth(self, pole, next_pole, wire, cw_index, pitch_angle):
-        f_end_x, f_end_y = self.datap.get_airsection_offset('F형_끝').get('x'), self.datap.get_airsection_offset(
-            'F형_끝').get('y')
-        aj_middle1_x, aj_middle1_y = self.datap.get_airsection_offset('AS형_중간1').get(
-            'x'), self.datap.get_airsection_offset('AS형_중간1').get('y')
-        aj_middle2_x, aj_middle2_y = self.datap.get_airsection_offset('AS형_중간2').get(
-            'x'), self.datap.get_airsection_offset('AS형_중간2').get('y')
-        aj_start_x, aj_start_y = self.datap.get_airsection_offset('AS형_시점').get(
-            'x'), self.datap.get_airsection_offset('AS형_시점').get('y')
-        f_start_x, f_start_y = self.datap.get_airsection_offset('F형_시점').get('x'), self.datap.get_airsection_offset(
-            'F형_시점').get('y')
-        aj_end_x, aj_end_y = self.datap.get_airsection_offset('AS형_끝').get('x'), self.datap.get_airsection_offset(
-            'AS형_끝').get('y')
+        f_end_x, _ = self._offset('F형_끝')
+        aj_middle1_x, _ = self._offset('AS형_중간1')
+        aj_middle2_x, _ = self._offset('AS형_중간2')
+        aj_start_x, _ = self._offset('AS형_시점')
+        f_start_x, f_start_y = self._offset('F형_시점')
+        aj_end_x, _ = self._offset('AS형_끝')
         # 일반 구간
         if pole.side == -1:
             aj_start_x *= 1
@@ -234,7 +209,6 @@ class AirSectionWireProcessor:
             aj_end_x *= 1
             f_end_x *= 1
         # 본선
-        end_offset = next_pole.brackets[0].stagger
         start_cw_height = self.datap.get_contact_wire_height(pole.structure)
         end_cw_height = self.datap.get_contact_wire_height(next_pole.structure)
         start_system_height = self.datap.get_system_height(pole.structure)
@@ -287,18 +261,12 @@ class AirSectionWireProcessor:
         wire.add_wire(cw)
 
     def process_section_forth_single(self, pole, next_pole, wire, cw_index, pitch_angle):
-        f_end_x, f_end_y = self.datap.get_airsection_offset('F형_끝').get('x'), self.datap.get_airsection_offset(
-            'F형_끝').get('y')
-        aj_middle1_x, aj_middle1_y = self.datap.get_airsection_offset('AS형_중간1').get(
-            'x'), self.datap.get_airsection_offset('AS형_중간1').get('y')
-        aj_middle2_x, aj_middle2_y = self.datap.get_airsection_offset('AS형_중간2').get(
-            'x'), self.datap.get_airsection_offset('AS형_중간2').get('y')
-        aj_start_x, aj_start_y = self.datap.get_airsection_offset('AS형_시점').get(
-            'x'), self.datap.get_airsection_offset('AS형_시점').get('y')
-        f_start_x, f_start_y = self.datap.get_airsection_offset('F형_시점').get('x'), self.datap.get_airsection_offset(
-            'F형_시점').get('y')
-        aj_end_x, aj_end_y = self.datap.get_airsection_offset('AS형_끝').get('x'), self.datap.get_airsection_offset(
-            'AS형_끝').get('y')
+        f_end_x, _ = self._offset('F형_끝')
+        aj_middle1_x, _ = self._offset('AS형_중간1')
+        aj_middle2_x, _ = self._offset('AS형_중간2')
+        aj_start_x, _ = self._offset('AS형_시점')
+        f_start_x, f_start_y = self._offset('F형_시점')
+        aj_end_x, _ = self._offset('AS형_끝')
         # 일반 구간
         if pole.side == -1:
             aj_start_x *= 1
@@ -349,18 +317,10 @@ class AirSectionWireProcessor:
                                   offset=(f_end_x, start_cw_height + f_start_y), yaw=0, pitch=0, roll=0)
         wire.add_insulator(insulator)
     def process_section_five(self, pole, next_pole, wire, cw_index, pitch_angle):
-        f_end_x, f_end_y = self.datap.get_airsection_offset('F형_끝').get('x'), self.datap.get_airsection_offset(
-            'F형_끝').get('y')
-        aj_middle1_x, aj_middle1_y = self.datap.get_airsection_offset('AS형_중간1').get(
-            'x'), self.datap.get_airsection_offset('AS형_중간1').get('y')
-        aj_middle2_x, aj_middle2_y = self.datap.get_airsection_offset('AS형_중간2').get(
-            'x'), self.datap.get_airsection_offset('AS형_중간2').get('y')
-        aj_start_x, aj_start_y = self.datap.get_airsection_offset('AS형_시점').get(
-            'x'), self.datap.get_airsection_offset('AS형_시점').get('y')
-        f_start_x, f_start_y = self.datap.get_airsection_offset('F형_시점').get('x'), self.datap.get_airsection_offset(
-            'F형_시점').get('y')
-        aj_end_x, aj_end_y = self.datap.get_airsection_offset('AS형_끝').get('x'), self.datap.get_airsection_offset(
-            'AS형_끝').get('y')
+        aj_middle1_x, _ = self._offset('AS형_중간1')
+        aj_middle2_x, _ = self._offset('AS형_중간2')
+        aj_start_x, _ = self._offset('AS형_시점')
+        f_start_x, f_start_y = self._offset('F형_시점')
 
         # 일반 구간
         if pole.side == -1:
@@ -404,18 +364,11 @@ class AirSectionWireProcessor:
         wire.add_insulator(insulator)
 
     def process_section_six(self, pole, next_pole, wire, cw_index, pitch_angle):
-        f_end_x, f_end_y = self.datap.get_airsection_offset('F형_끝').get('x'), self.datap.get_airsection_offset(
-            'F형_끝').get('y')
-        aj_middle1_x, aj_middle1_y = self.datap.get_airsection_offset('AS형_중간1').get(
-            'x'), self.datap.get_airsection_offset('AS형_중간1').get('y')
-        aj_middle2_x, aj_middle2_y = self.datap.get_airsection_offset('AS형_중간2').get(
-            'x'), self.datap.get_airsection_offset('AS형_중간2').get('y')
-        aj_start_x, aj_start_y = self.datap.get_airsection_offset('AS형_시점').get(
-            'x'), self.datap.get_airsection_offset('AS형_시점').get('y')
-        f_start_x, f_start_y = self.datap.get_airsection_offset('F형_시점').get('x'), self.datap.get_airsection_offset(
-            'F형_시점').get('y')
-        aj_end_x, aj_end_y = self.datap.get_airsection_offset('AS형_끝').get('x'), self.datap.get_airsection_offset(
-            'AS형_끝').get('y')
+        f_end_x, _ = self._offset('F형_끝')
+        aj_middle1_x, _ = self._offset('AS형_중간1')
+        aj_middle2_x, _ = self._offset('AS형_중간2')
+        _, f_start_y = self._offset('F형_시점')
+        aj_end_x, _ = self._offset('AS형_끝')
 
         # 일반 구간
         if pole.side == -1:
@@ -455,18 +408,12 @@ class AirSectionWireProcessor:
         )
     def process_section_seven(self, pole, next_pole, wire, cw_index, pitch_angle):
         # 평행구간 전차선 오프셋
-        f_end_x, f_end_y = self.datap.get_airsection_offset('F형_끝').get('x'), self.datap.get_airsection_offset(
-            'F형_끝').get('y')
-        aj_middle1_x, aj_middle1_y = self.datap.get_airsection_offset('AS형_중간1').get(
-            'x'), self.datap.get_airsection_offset('AS형_중간1').get('y')
-        aj_middle2_x, aj_middle2_y = self.datap.get_airsection_offset('AS형_중간2').get(
-            'x'), self.datap.get_airsection_offset('AS형_중간2').get('y')
-        aj_start_x, aj_start_y = self.datap.get_airsection_offset('AS형_시점').get(
-            'x'), self.datap.get_airsection_offset('AS형_시점').get('y')
-        f_start_x, f_start_y = self.datap.get_airsection_offset('F형_시점').get('x'), self.datap.get_airsection_offset(
-            'F형_시점').get('y')
-        aj_end_x, aj_end_y = self.datap.get_airsection_offset('AS형_끝').get('x'), self.datap.get_airsection_offset(
-            'AS형_끝').get('y')
+        f_end_x, _ = self._offset('F형_끝')
+        aj_middle1_x, _ = self._offset('AS형_중간1')
+        aj_middle2_x, _ = self._offset('AS형_중간2')
+        aj_start_x, _ = self._offset('AS형_시점')
+        f_start_x, f_start_y = self._offset('F형_시점')
+        aj_end_x, _ = self._offset('AS형_끝')
 
         # 방향(side) + 터널 여부에 따라 X 좌표 반전
 
@@ -485,7 +432,6 @@ class AirSectionWireProcessor:
         start_cw_height = self.datap.get_contact_wire_height(pole.structure)
         end_cw_height = self.datap.get_contact_wire_height(next_pole.structure)
         start_system_height = self.datap.get_system_height(pole.structure)
-        end_system_height = self.datap.get_system_height(next_pole.structure)
         wire.add_wire(self.common.run(
             self.al, cw_index, pole.pos, pole.next_pos, pole.z, pole.next_z,
             (aj_end_x, start_cw_height), (end_offset, end_cw_height), pitch_angle, label='본선전차선')
