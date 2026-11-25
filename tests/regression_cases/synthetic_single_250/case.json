@@ -1,0 +1,10 @@
+{
+  "description": "합성 노선 단선 250km/h: 직선·R600·R250 급곡선, 구배, 교량·터널, 에어조인트",
+  "coord": "../synthetic_route/bve_coordinates.txt",
+  "curve": "../synthetic_route/curve_info.txt",
+  "pitch": "../synthetic_route/pitch_info.txt",
+  "structure": "../synthetic_route/structure.xlsx",
+  "speed": 250, "mode": "single", "main_direction": "L", "tunnel_direction": "L",
+  "start": 0, "end": 3000,
+  "verify": {"main_max_cm": 0.1}
+}
