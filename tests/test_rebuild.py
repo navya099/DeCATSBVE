@@ -1,0 +1,156 @@
+"""편집 후 재계산(core.model_rebuilder.rebuild) 테스트: python -m pytest tests"""
+import contextlib
+import glob
+import io
+import os
+import sys
+import types
+
+import pytest
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+from core.airjoint.airjoint_processor import AirJointProcessor  # noqa: E402
+from core.alignment.rail_alignment import RailAlignment  # noqa: E402
+from core.model_rebuilder import alignment_for, rebuild  # noqa: E402
+from core.pole.normal_section_processor import NormalSectionProcessor  # noqa: E402
+from core.pole.pole_updator import PoleUpdator  # noqa: E402
+from core.pole.tunnel_section_processor import TunnelSectionProcessor  # noqa: E402
+from enums.airjoint_section import AirJoint  # noqa: E402
+from tools import headless  # noqa: E402
+
+CASES = os.path.join(ROOT, 'tests', 'regression_cases')
+BUILTIN = sorted(os.path.dirname(p) for p in glob.glob(os.path.join(CASES, '*', 'case.json')))
+
+
+def run_case(name):
+    runner = headless.build_runner(headless.load_config(os.path.join(CASES, name, 'case.json')))
+    with contextlib.redirect_stdout(io.StringIO()):
+        runner.run()
+    return runner
+
+
+def outputs(runner, tmp_path, tag):
+    out = tmp_path / tag
+    headless.write_outputs(runner, str(out), '')
+    return {f.name: f.read_text(encoding='utf-8') for f in out.iterdir() if f.suffix == '.txt'}
+
+
+def quiet_rebuild(runner):
+    with contextlib.redirect_stdout(io.StringIO()):
+        rebuild(runner)
+
+
+def flowstop_mids(runner, track='main'):
+    return [p.pos for p in runner.poledata[track] if p.section == '흐름방지 중간점']
+
+
+def set_airjoint(runner, track, mid_index):
+    """편집기 add_airjoint 와 같은 변경: 연속 5개 전주에 에어조인트 구간 지정 후 처리"""
+    poles = runner.poledata[track]
+    tags = [AirJoint.START, AirJoint.POINT_2, AirJoint.MIDDLE, AirJoint.POINT_4, AirJoint.END]
+    group = poles[mid_index - 2: mid_index + 3]
+    for pole, tag in zip(group, tags):
+        pole.section = tag.value
+    for pole in group:
+        AirJointProcessor.process(pole, alignment_for(runner, track), runner.dataprocessor, runner.idxlib)
+    return group
+
+
+def clear_airjoint(runner, group):
+    """편집기 remove_airjoint 와 같은 변경"""
+    for pole in group:
+        pole.section = None
+        pole.brackets, pole.mast, pole.equipments = [], None, []
+        processor = TunnelSectionProcessor if pole.structure == '터널' else NormalSectionProcessor
+        processor.process(pole, runner.dataprocessor, runner.idxlib)
+
+
+def normal_run(poles, start=0):
+    """앞뒤 2개까지 모두 일반개소인 가운데 전주 인덱스"""
+    return next(i for i in range(max(2, start), len(poles) - 2)
+                if all(poles[j].section is None for j in range(i - 2, i + 3)))
+
+
+@pytest.mark.parametrize('case_dir', BUILTIN, ids=os.path.basename)
+def test_rebuild_after_run_reproduces_output(case_dir, tmp_path):
+    """자동 배치 직후 rebuild 해도 출력이 같아야 한다 (재계산 경로 = 생성 경로)"""
+    runner = run_case(os.path.basename(case_dir))
+    first = outputs(runner, tmp_path, 'first')
+    quiet_rebuild(runner)
+    assert outputs(runner, tmp_path, 'rebuilt') == first
+    quiet_rebuild(runner)  # 여러 번 해도 동일 (상태 누적 없음)
+    assert outputs(runner, tmp_path, 'rebuilt2') == first
+
+
+def test_flowstop_follows_airjoint_edits():
+    """에어조인트 추가 → 새 장력구간에 흐름방지 생성, 제거 → 원래대로 (이전: 처음 계산값에 고정)"""
+    runner = run_case('synthetic_single_250')
+    assert flowstop_mids(runner) == []  # 에어조인트 1개뿐 → 흐름방지 구간 없음
+
+    poles = runner.poledata['main']
+    existing_aj = next(i for i, p in enumerate(poles) if p.section == AirJoint.END.value)
+    group = set_airjoint(runner, 'main', normal_run(poles, existing_aj + 10))
+    quiet_rebuild(runner)
+    mids = flowstop_mids(runner)
+    assert len(mids) == 1
+    assert poles[existing_aj].pos < mids[0] < group[0].pos  # 두 에어조인트 사이
+    devices = [p for p in poles if any(e.type == '흐름방지장치' for e in p.equipments)]
+    assert len(devices) == 2  # 시작점·끝점 전주
+    wires = [w for wd in runner.wire_data['main'] for w in wd.wires if w.label == '흐름방지선']
+    assert len(wires) == 2
+
+    clear_airjoint(runner, group)
+    quiet_rebuild(runner)
+    assert flowstop_mids(runner) == []
+    assert not any(e.type in ('흐름방지장치', '봉강지선') for p in poles for e in p.equipments)
+    assert not any(w.label == '흐름방지선' for wd in runner.wire_data['main'] for w in wd.wires)
+
+
+def test_manual_flowstop_requests_survive_rebuild():
+    runner = run_case('synthetic_single_250')
+    poles = runner.poledata['main']
+    i = normal_run(poles, 3)
+    start, mid, end = poles[i - 1].pos, poles[i].pos, poles[i + 1].pos
+    with contextlib.redirect_stdout(io.StringIO()):
+        runner.anticreeping_pr.add_manual_section('main', start, end, mid)
+    assert flowstop_mids(runner) == [mid]
+
+    quiet_rebuild(runner)  # 다른 편집으로 재계산돼도 유지
+    assert flowstop_mids(runner) == [mid]
+
+    with contextlib.redirect_stdout(io.StringIO()):
+        runner.anticreeping_pr.remove_manual_section('main', start, end, mid)
+    quiet_rebuild(runner)
+    assert flowstop_mids(runner) == []
+
+
+def test_flowstop_does_not_overwrite_airjoint_section():
+    """흐름방지 구간이 짧아 에어조인트 끝/시작 전주와 겹쳐도 에어조인트 태그는 유지"""
+    runner = run_case('synthetic_single_250')
+    poles = runner.poledata['main']
+    end = next(i for i, p in enumerate(poles) if p.section == AirJoint.END.value)
+    # 에어조인트 바로 뒤에 다른 에어조인트를 붙여 사이 전주를 최소화
+    set_airjoint(runner, 'main', end + 3)
+    quiet_rebuild(runner)
+    assert poles[end].section == AirJoint.END.value
+    assert poles[end + 1].section == AirJoint.START.value
+
+
+def test_pole_updator_does_not_link_across_rail_gap():
+    alignment = RailAlignment([(i * 25, i * 25.0, 0.0, 0.0) for i in range(13)],
+                              visible_blocks={0.0, 25.0, 50.0, 75.0, 200.0, 225.0, 250.0})
+
+    def pole(pos):
+        return types.SimpleNamespace(pos=pos, next_pos=None, span=None, gauge=3, structure='토공', z=0,
+                                     base_type='I', side=-1)
+
+    poles = [pole(0), pole(50), pole(200), pole(250)]
+    poles[1].next_pos, poles[1].span = 100, 50  # 생성 시점의 경간 (단절 직전)
+    PoleUpdator.update_all(poles, alignment)
+    assert (poles[0].next_pos, poles[0].span) == (50, 50)
+    assert (poles[1].next_pos, poles[1].span) == (100, 50)  # 단절을 건너 200 과 잇지 않음
+    assert (poles[2].next_pos, poles[2].span) == (250, 50)
+    PoleUpdator.update_all(poles)  # 표시 정보 없으면 기존처럼 연결
+    assert poles[1].next_pos == 200

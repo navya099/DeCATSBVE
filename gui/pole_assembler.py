@@ -5,6 +5,7 @@ from xref_module.object_libraymgr import LibraryManager
 import tkinter as tk
 from tkinter import ttk, messagebox
 from xref_module.transaction import Transaction
+from event.events import MODEL_CHANGED, POLE_SELECTED
 
 class PoleAssemblerApp(tk.Toplevel):
     def __init__(self, runner, objlib, event= None):
@@ -228,7 +229,7 @@ class PoleAssemblerApp(tk.Toplevel):
 
     # 초기화 이후에도 호출 가능
     def bind_events(self):
-        self.event.bind("pole_selected", self.on_pole_selected)
+        self.event.bind(POLE_SELECTED, self.on_pole_selected)
 
     def on_pole_selected(self, epole):
         if not self.winfo_exists():
@@ -281,7 +282,8 @@ class PoleAssemblerApp(tk.Toplevel):
         self.selection["equipments"] = self.equip_entries
         self.selection["gauge"] = self.gauge_var.get()
         self.commit_to_poledata()
-        self.event.emit('pole_modified')
+        # 전주 구성만 바뀜(전선 재생성 없음) → 화면만 갱신
+        self.event.emit(MODEL_CHANGED)
 
     def commit_to_poledata(self):
         try:
@@ -356,5 +358,5 @@ class PoleAssemblerApp(tk.Toplevel):
 
     def cancle(self):
         if self.event:
-            self.event.unbind("pole_selected", self.on_pole_selected)
+            self.event.unbind(POLE_SELECTED, self.on_pole_selected)
         self.destroy()

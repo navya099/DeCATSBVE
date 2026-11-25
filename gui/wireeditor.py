@@ -2,6 +2,8 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 
+from event.events import POLE_SELECTED, WIRE_SELECTED
+
 class WireEditor(tk.Toplevel):
     def __init__(self, runner, event=None):
         super().__init__()
@@ -112,8 +114,8 @@ class WireEditor(tk.Toplevel):
 
     # 초기화 이후에도 호출 가능
     def bind_events(self):
-        self.event.bind("pole_selected", self.on_pole_selected)
-        self.event.bind("wire_selected", self.on_wire_selected)
+        self.event.bind(POLE_SELECTED, self.on_pole_selected)
+        self.event.bind(WIRE_SELECTED, self.on_wire_selected)
 
     def on_pole_selected(self, epole):
         if not self.winfo_exists():

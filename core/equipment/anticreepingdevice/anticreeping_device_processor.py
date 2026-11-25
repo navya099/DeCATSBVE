@@ -3,94 +3,134 @@ from core.equipment.equipment_data import EquipmentDATA
 from utils.math_util import change_permile_to_degree, calculate_curve_angle, calculate_slope
 
 
+FLOWSTOP_TAGS = ("흐름방지 시작점", "흐름방지 중간점", "흐름방지 끝점")
+FLOWSTOP_EQUIPMENT_TYPES = ('흐름방지장치', '봉강지선')
+AJ_START = "에어조인트 시작점 (1호주)"
+AJ_END = "에어조인트 끝점 (5호주)"
+
+
 class AnticreepingDeviceProcessor:
-    def __init__(self, poledata, wiredata, airjoint_list, wire_processor):
+    """흐름방지장치 처리기.
+
+    process() 를 부를 때마다 현재 전주 데이터에서 처음부터 다시 계산한다 (상태를 누적하지 않음):
+      1) 이전 계산 결과(흐름방지 구간 태그, 장비, 흐름방지선) 제거
+      2) 자동 구간: 인접한 두 에어조인트 사이(앞 에어조인트 끝점 ~ 다음 에어조인트 시작점)의 가운데 전주
+      3) 사용자 추가/삭제 요청(manual_ops)을 요청 순서대로 다시 적용
+      4) 전주 장비·전선 반영
+    그래서 전주 이동/추가/삭제, 에어조인트 추가/삭제 뒤에도 항상 현재 배치와 일치한다.
+    """
+
+    def __init__(self, poledata, wiredata, airjoint_list=None, wire_processor=None):
         self.devices_by_track = {}
         self.poledata = poledata      # {"main": [...], "sub": [...]}
         self.wiredata = wiredata
-        self.airjoint_list = airjoint_list  # 그냥 리스트일 경우
+        self.airjoint_list = airjoint_list  # 호환용 (자동 구간은 현재 전주의 에어조인트 구간에서 계산)
         self.wire_processor = wire_processor
-    def set_data(self, poledata, wiredata):
+        self.manual_ops = []          # [("add"|"remove", track, start_pos, end_pos, mid_pos), ...]
+
+    def set_data(self, poledata, wiredata, wire_processor=None):
         self.poledata = poledata  # {"main": [...], "sub": [...]}
         self.wiredata = wiredata
+        if wire_processor is not None:
+            self.wire_processor = wire_processor
+
     def process(self):
+        self.clear()
         self.define_section()
         self.apply()
 
+    # ── 계산 ────────────────────────────────────────
+    def clear(self):
+        """이전 계산 결과 제거 (전주 구간 태그·장비, 흐름방지선)"""
+        for poles in self.poledata.values():
+            for pole in poles:
+                if pole.section in FLOWSTOP_TAGS:
+                    pole.section = None
+                pole.equipments = [e for e in pole.equipments if e.type not in FLOWSTOP_EQUIPMENT_TYPES]
+        for wires in (self.wiredata or {}).values():
+            for wire in wires:
+                wire.wires = [w for w in wire.wires if w.label != '흐름방지선']
+
+    @staticmethod
+    def _device_rows(track_name, poles_in_section, mid_index):
+        """가운데 전주 기준 앞·가운데·뒤 3개 전주에 시작/중간/끝 태그"""
+        indices = [max(0, mid_index - 1), mid_index, min(len(poles_in_section) - 1, mid_index + 1)]
+        return [{
+            "track": track_name,
+            "pos": poles_in_section[idx].pos,
+            "post_number": poles_in_section[idx].post_number,
+            "device_type": "Anticreeping",
+            "tag": tag,
+        } for tag, idx in zip(FLOWSTOP_TAGS, indices)]
+
+    @staticmethod
+    def _airjoint_gaps(poles):
+        """[(앞 에어조인트 끝점 pos, 다음 에어조인트 시작점 pos), ...]"""
+        gaps = []
+        last_end = None
+        for pole in sorted(poles, key=lambda p: p.pos):
+            if pole.section == AJ_END:
+                last_end = pole.pos
+            elif pole.section == AJ_START and last_end is not None:
+                gaps.append((last_end, pole.pos))
+                last_end = None
+            elif pole.section is not None and pole.section not in FLOWSTOP_TAGS:
+                last_end = None  # 사이에 다른 구간(에어조인트 중간 등)이 끼면 인접 쌍이 아님
+        return gaps
+
     def define_section(self):
+        self.devices_by_track = {}
         for track_name, poles in self.poledata.items():
-            if track_name in self.devices_by_track:
-                continue
             devices = []
-            aj_list = self.airjoint_list
-
-            for i in range(len(aj_list) - 1):
-                current_tag = aj_list[i][1]
-                next_tag = aj_list[i + 1][1]
-
-                if current_tag == "에어조인트 끝점 (5호주)" and next_tag == "에어조인트 시작점 (1호주)":
-                    start_pos = aj_list[i][0]
-                    end_pos = aj_list[i + 1][0]
-
-                    poles_in_section = [p for p in poles if start_pos <= p.pos <= end_pos]
-                    if not poles_in_section:
-                        continue
-
-                    mid_index = len(poles_in_section) // 2
-                    mid_pole = poles_in_section[mid_index]
-
-                    # 중심 전주 기준 앞뒤 1개 포함 (예시)
-                    indices = [max(0, mid_index - 1), mid_index, min(len(poles_in_section) - 1, mid_index + 1)]
-                    tags = ["흐름방지 시작점", "흐름방지 중간점", "흐름방지 끝점"]
-
-
-                    for tag, idx in zip(tags, indices):
-                        pole = poles_in_section[idx]
-                        devices.append({
-                            "track": track_name,
-                            "pos": pole.pos,
-                            "post_number": pole.post_number,
-                            "device_type": "Anticreeping",
-                            "tag": tag
-                        })
-
+            for start_pos, end_pos in self._airjoint_gaps(poles):
+                poles_in_section = [p for p in poles if start_pos <= p.pos <= end_pos]
+                if poles_in_section:
+                    devices.extend(self._device_rows(track_name, poles_in_section, len(poles_in_section) // 2))
             self.devices_by_track[track_name] = devices
 
-    def add_manual_section(self, track_name, start_pos, end_pos, mid_pos):
-        """사용자가 직접 midpos를 지정해서 흐름방지 섹션 생성"""
-        self.remove_manual_section(track_name, start_pos, end_pos, mid_pos) #먼저 기존 객체제거
-        poles = self.poledata[track_name]
-        poles_in_section = [p for p in poles if start_pos <= p.pos <= end_pos]
+        for op, track_name, start_pos, end_pos, mid_pos in getattr(self, 'manual_ops', []):
+            if track_name not in self.poledata:
+                continue
+            self._remove_section(track_name, start_pos, end_pos, mid_pos)
+            if op == "add":
+                self._add_section(track_name, start_pos, end_pos, mid_pos)
+
+    def _section_around(self, track_name, start_pos, end_pos, mid_pos):
+        poles_in_section = [p for p in self.poledata[track_name] if start_pos <= p.pos <= end_pos]
+        if not poles_in_section:
+            return None, None
+        mid_pole = min(poles_in_section, key=lambda p: abs(p.pos - mid_pos))  # midpos 에 가장 가까운 전주
+        return poles_in_section, poles_in_section.index(mid_pole)
+
+    def _add_section(self, track_name, start_pos, end_pos, mid_pos):
+        poles_in_section, mid_index = self._section_around(track_name, start_pos, end_pos, mid_pos)
+        if poles_in_section:
+            self.devices_by_track.setdefault(track_name, []).extend(
+                self._device_rows(track_name, poles_in_section, mid_index))
+
+    def _remove_section(self, track_name, start_pos, end_pos, mid_pos):
+        poles_in_section, mid_index = self._section_around(track_name, start_pos, end_pos, mid_pos)
         if not poles_in_section:
             return
+        targets = {row["pos"] for row in self._device_rows(track_name, poles_in_section, mid_index)}
+        self.devices_by_track[track_name] = [d for d in self.devices_by_track.get(track_name, [])
+                                             if d["pos"] not in targets]
 
-        # midpos에 가장 가까운 전주 찾기
-        mid_pole = min(poles_in_section, key=lambda p: abs(p.pos - mid_pos))
+    # ── 사용자 편집 ──────────────────────────────────
+    def add_manual_section(self, track_name, start_pos, end_pos, mid_pos):
+        """사용자가 midpos 를 지정해서 흐름방지 구간 추가 (이후 재계산에도 유지)"""
+        self._ops().append(("add", track_name, start_pos, end_pos, mid_pos))
+        self.process()
 
-        indices = [max(0, poles_in_section.index(mid_pole) - 1),
-                   poles_in_section.index(mid_pole),
-                   min(len(poles_in_section) - 1, poles_in_section.index(mid_pole) + 1)]
-        tags = ["흐름방지 시작점", "흐름방지 중간점", "흐름방지 끝점"]
+    def remove_manual_section(self, track_name, start_pos, end_pos, mid_pos):
+        """사용자가 지정한 흐름방지 구간 제거 (자동 구간 포함, 이후 재계산에도 유지)"""
+        self._ops().append(("remove", track_name, start_pos, end_pos, mid_pos))
+        self.process()
 
-        devices = []
-        for tag, idx in zip(tags, indices):
-            pole = poles_in_section[idx]
-            wire = next((w for w in self.wiredata[track_name] if w.pos == pole.pos), None)
-            devices.append({
-                "track": track_name,
-                "pos": pole.pos,
-                "post_number": pole.post_number,
-                "device_type": "Anticreeping",
-                "tag": tag
-            })
-
-        # 기존 섹션 유지하면서 track_name에 추가
-        if track_name not in self.devices_by_track:
-            self.devices_by_track[track_name] = []
-        self.devices_by_track[track_name].extend(devices)
-
-        # 바로 반영
-        self.apply()
+    def _ops(self):
+        if not hasattr(self, 'manual_ops'):  # 구버전 pickle
+            self.manual_ops = []
+        return self.manual_ops
 
     def apply(self):
         """실제로 poledata에 장치 태그 반영"""
@@ -109,7 +149,8 @@ class AnticreepingDeviceProcessor:
                 cw = next((w for w in wire.wires if w.label == '전차선'), None)
                 if cw is None:
                     continue  # 전차선이 없으면 건너뜀
-                pole.section = device['tag']
+                if pole.section is None or pole.section in FLOWSTOP_TAGS:
+                    pole.section = device['tag']  # 에어조인트 등 다른 구간 태그는 유지
                 # 기존 흐름방지 장치 제거
                 pole.equipments = [
                     e for e in pole.equipments
@@ -186,48 +227,3 @@ class AnticreepingDeviceProcessor:
             start=start, end=end, pitch_angle=pitch_angle,
             label='흐름방지선'
         )
-
-    def remove_manual_section(self, track_name, start_pos, end_pos, mid_pos):
-        """사용자가 추가한 흐름방지 섹션 제거"""
-
-        if track_name not in self.devices_by_track:
-            return
-
-        poles = self.poledata[track_name]
-        poles_in_section = [p for p in poles if start_pos <= p.pos <= end_pos]
-        if not poles_in_section:
-            return
-
-        mid_pole = min(poles_in_section, key=lambda p: abs(p.pos - mid_pos))
-
-        indices = [
-            max(0, poles_in_section.index(mid_pole) - 1),
-            poles_in_section.index(mid_pole),
-            min(len(poles_in_section) - 1, poles_in_section.index(mid_pole) + 1)
-        ]
-
-        target_positions = {poles_in_section[i].pos for i in indices}
-
-        # device 삭제
-        self.devices_by_track[track_name] = [
-            d for d in self.devices_by_track[track_name]
-            if d["pos"] not in target_positions
-        ]
-
-        # pole 장비 제거
-        for pole in poles:
-            if pole.pos in target_positions:
-                pole.section = None
-                pole.equipments = [
-                    e for e in pole.equipments
-                    if e.type not in ['흐름방지장치', '봉강지선']
-                ]
-
-        # wire 제거
-        wires = self.wiredata[track_name]
-        for wire in wires:
-            if wire.pos in target_positions:
-                wire.wires = [
-                    w for w in wire.wires
-                    if w.label != '흐름방지선'
-                ]

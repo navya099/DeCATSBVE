@@ -20,6 +20,7 @@ from core.runner import AutoRunner
 from dataset.dataset_getter import DatasetGetter
 from dataset.dataset_manager import load_dataset
 from event.event_controller import EventController
+from event.events import MODEL_CHANGED
 from file_io.filemanager import write_to_file, save_runner, load_runner
 from gui.dataset_gui import DataSetEditor
 from gui.maineditor import AutoPoleEditor
@@ -629,20 +630,22 @@ class AutoPoleApp(tk.Tk):
             self.refresh_library()
             self.load_dataset()
             self.runner.run()
-            self.editor.runner = self.runner
-            self.plotter.runner = self.runner
-            self.editor.create_epoles()
-            self.editor.create_ewires()
-            self.editor.refresh_tree()
-            self.plotter.update_plot()
-            self.plotter.selected_pole_scatter = None
-            self.plotter.selected_pole_text    = None
+            self._show_new_runner()
             self._set_status("생성 완료", "success")
             self.log_append("✅ 전주 배치 완료", "SUCCESS")
         except Exception as e:
             messagebox.showerror('에러', f'러너 실행중 오류가 발생했습니다.\n{e}')
             self._set_status("실행 오류", "error")
             self.log_append(f"❌ {e}", "ERROR")
+
+    def _show_new_runner(self):
+        """새 runner(실행/로드 결과)를 편집기·배치도에 연결하고 MODEL_CHANGED 로 갱신"""
+        self.editor.runner = self.runner
+        self.plotter.runner = self.runner
+        self.editor.selected_pole = None
+        self.plotter.selected_epole = None
+        self.plotter.selected_pole = None
+        self.events.emit(MODEL_CHANGED)
 
     def save(self):
         if not self.runner or not self.runner.poledata:
@@ -728,14 +731,7 @@ class AutoPoleApp(tk.Tk):
             if self.runner.track_mode == "double":
                 self.runner.polesaver_sub = BVECSV(self.runner.poledata["sub"], self.runner.wire_data["sub"], 1)
 
-            self.editor.runner = self.runner
-            self.plotter.runner = self.runner
-            self.editor.create_epoles()
-            self.editor.create_ewires()
-            self.editor.refresh_tree()
-            self.plotter.update_plot()
-            self.plotter.selected_pole_scatter = None
-            self.plotter.selected_pole_text = None
+            self._show_new_runner()
         except Exception as e:
             messagebox.showerror('로드 오류', f'데이터 로드 중 오류: {e}')
             self._set_status("로드 오류", "error")

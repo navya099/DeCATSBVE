@@ -62,6 +62,15 @@ set DECATSBVE_REGRESSION_CASES=D:\regression\충남선_250;D:\regression\도시�
 python -m pytest tests
 ```
 
+## 4. GUI 스모크 테스트 — `tools/gui_smoke.py`
+
+실제 Tk 앱을 띄워 편집 동작(전주 이동·삭제, 에어조인트 추가·제거, 흐름방지 추가·삭제, 상선 편집)을 실행하고,
+단계마다 테이블·배치도·전선·흐름방지가 서로 일치하는지 검사합니다. 창이 잠깐 열렸다 닫힙니다.
+
+```bash
+python -m tools.gui_smoke tests/regression_cases/synthetic_double_rail_150/case.json
+```
+
 ### 실제 노선 케이스 만들기
 
 1. 폴더를 만들고 `case.json` 작성 (경로는 절대경로 또는 `case.json` 기준 상대경로)

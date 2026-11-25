@@ -4,14 +4,13 @@ from tkinter.filedialog import askopenfilename
 
 from core.airjoint.airjoint_processor import AirJointProcessor
 from core.airsection.airsection_processor import AirSectionProcessor
-from core.equipment.anticreepingdevice.anticreeping_device_processor import AnticreepingDeviceProcessor
 from core.pole.manual_pole_processor import ManualPoleProcessor
 from core.pole.normal_section_processor import NormalSectionProcessor
-from core.pole.pole_updator import PoleUpdator
 from core.pole.tunnel_section_processor import TunnelSectionProcessor
 from core.structure.define_structure import isbridge_tunnel
-from core.wire.wire_processor import WireProcessor
+from core.model_rebuilder import alignment_for, rebuild
 from enums.airjoint_section import AirJoint
+from event.events import MODEL_CHANGED, POLE_SELECTED, POLES_SELECTED, WIRE_SELECTED
 from gui.pole_add_ui import PoleADDUI
 from gui.pole_assembler import PoleAssemblerApp
 from gui.tkdialog import TkDialogService
@@ -34,9 +33,9 @@ class AutoPoleEditor(tk.Frame):
         self.editable_wires = {"main": [], "sub": []}
         self.objlib = objlib
         # 이벤트 바인딩
+        self.selected_pole = None
         if self.events:
-            self.events.bind('pole_moved', self.on_pole_moved)
-            self.events.bind('pole_modified', self.on_pole_modifeyed)
+            self.events.bind(MODEL_CHANGED, self.on_model_changed)
 
         # Notebook 생성 (본선/상선 탭)
         self.notebook = ttk.Notebook(self)
@@ -170,11 +169,38 @@ class AutoPoleEditor(tk.Frame):
             ))
 
 
-    def on_pole_moved(self):
-        self.refresh_tree()
+    # ── 데이터 변경 공통 처리 ─────────────────────────
+    def _current_track(self):
+        return 'main' if self.notebook.tab(self.notebook.select(), "text") == "본선" else 'sub'
 
-    def on_pole_modifeyed(self):
+    def commit_change(self, message=None):
+        """runner.poledata 를 고친 뒤 호출: 파생 데이터 재계산 → MODEL_CHANGED 로 모든 화면 갱신"""
+        rebuild(self.runner)
+        if message:
+            self.runner.log(message)
+        self.notify_model_changed()
+
+    def notify_model_changed(self):
+        if self.events:
+            self.events.emit(MODEL_CHANGED)
+        else:
+            self.on_model_changed()
+
+    def on_model_changed(self):
+        """편집용 래퍼(EditablePole/Wire) 재생성, 테이블 갱신, 선택 전주 유지"""
+        selected = self.selected_pole.pole if self.selected_pole is not None else None
+        self.create_epoles()
+        self.create_ewires()
         self.refresh_tree()
+        self.selected_pole = None
+        if selected is not None:
+            for epoles in self.editable_poles.values():
+                found = next((e for e in epoles if e.pole is selected), None)
+                if found:
+                    self.selected_pole = found
+                    if self.events:
+                        self.events.emit(POLE_SELECTED, found)  # 다른 화면도 새 래퍼로 갱신
+                    break
 
     def refresh_tree(self):
         if not self.runner.poledata:
@@ -243,11 +269,11 @@ class AutoPoleEditor(tk.Frame):
         # 이벤트 발행
         if self.events and selected_epoles:
             # 1. 단일 전주 이벤트 (현재 탭에서 선택된 epole)
-            self.events.emit("pole_selected", self.selected_pole)
+            self.events.emit(POLE_SELECTED, self.selected_pole)
             # 2. 복수 전주 이벤트 (본선+상선 두 개 epole)
-            self.events.emit("poles_selected", selected_epoles)
+            self.events.emit(POLES_SELECTED, selected_epoles)
             #전선 선택 이벤트
-            self.events.emit("wire_selected", self.selected_wire)
+            self.events.emit(WIRE_SELECTED, self.selected_wire)
 
 
     def _handle_selection(self, item, track, fill_entry=True):
@@ -282,7 +308,7 @@ class AutoPoleEditor(tk.Frame):
                     self.runner.structure_list,
                     self.runner.curvelist,
                     self.runner.pitchlist,
-                    self.runner.polyline_with_sta if track_name == "main" else self.runner.offset_line_with_25,
+                    alignment_for(self.runner, track_name),
                     prev_pole=prev_epole
                 )
                 self.editable_poles[track_name].append(epole)
@@ -304,7 +330,7 @@ class AutoPoleEditor(tk.Frame):
                     self.runner.structure_list,
                     self.runner.curvelist,
                     self.runner.pitchlist,
-                    self.runner.polyline_with_sta if track_name == "main" else self.runner.offset_line_with_25,
+                    alignment_for(self.runner, track_name),
                     prev_wire=prev_ewire
                 )
                 self.editable_wires[track_name].append(ewire)
@@ -313,17 +339,9 @@ class AutoPoleEditor(tk.Frame):
                 prev_ewire = ewire
 
     def save_edit(self, post_number, pos, gauge, section, base_type, side):
-        current_tab = self.notebook.tab(self.notebook.select(), "text")
-        if current_tab == "본선":
-            tree = self.tree_main
-            poles = self.runner.poledata["main"]
-            al = self.runner.polyline_with_sta
-            track = 'main'
-        else:
-            tree = self.tree_sub
-            poles = self.runner.poledata["sub"]
-            al = self.runner.offset_line_with_25
-            track = 'sub'
+        track = self._current_track()
+        poles = self.runner.poledata[track]
+        al = alignment_for(self.runner, track)
 
         new_post_number = post_number
         new_pos = pos
@@ -348,22 +366,10 @@ class AutoPoleEditor(tk.Frame):
 
         if replace_idx is not None:
             poles[replace_idx] = new_pole  # 기존 전주 대체
+            if self.selected_pole is not None and self.selected_pole.pole.pos == self.original_pos:
+                self.selected_pole.pole = new_pole  # 선택 유지
 
-        # 앞쪽 전주 갱신
-        PoleUpdator.update_all(poles)
-        self.runner.wire_processor = WireProcessor(self.runner.dataprocessor, self.runner.alignment_by_track, self.runner.poledata, self.runner.curvelist)
-        self.runner.wire_data = self.runner.wire_processor.process_to_wire()
-        # 흐름방지장치 복구
-        self.runner.anticreeping_pr = AnticreepingDeviceProcessor(self.runner.poledata, self.runner.wire_data,
-                                                                  self.runner.airjoint_list,
-                                                                  self.runner.wire_processor)
-        self.runner.anticreeping_pr.process()
-        self.create_epoles()
-        self.create_ewires()
-
-        if self.events:
-            self.events.emit("pole_saved")
-
+        self.commit_change()
         return True
     def open_equipment_editor(self):
         asemlbapp = PoleAssemblerApp(self.runner, self.objlib ,self.events)
@@ -374,17 +380,9 @@ class AutoPoleEditor(tk.Frame):
         we.bind_events()
 
     def add_pole(self):
-        current_tab = self.notebook.tab(self.notebook.select(), "text")
-        if current_tab == "본선":
-            tree = self.tree_main
-            poles = self.runner.poledata["main"]
-            al = self.runner.polyline_with_sta
-            track = 'main'
-        else:
-            tree = self.tree_sub
-            poles = self.runner.poledata["sub"]
-            al = self.runner.offset_line_with_25
-            track = 'sub'
+        track = self._current_track()
+        poles = self.runner.poledata[track]
+        al = alignment_for(self.runner, track)
 
         #UI열기
         addui = PoleADDUI()
@@ -409,37 +407,7 @@ class AutoPoleEditor(tk.Frame):
                 break
 
         poles.insert(insert_idx, new_pole)
-        #next 속성 채우기
-        # 앞쪽 전주 갱신
-        PoleUpdator.update_all(poles)
-
-        self.runner.wire_processor = WireProcessor(self.runner.dataprocessor, self.runner.alignment_by_track,
-                                                   self.runner.poledata, self.runner.curvelist)
-        self.runner.wire_data = self.runner.wire_processor.process_to_wire()
-        #흐름방지장치 복구
-        self.runner.anticreeping_pr = AnticreepingDeviceProcessor(self.runner.poledata, self.runner.wire_data, self.runner.airjoint_list,
-                                                           self.runner.wire_processor)
-        self.runner.anticreeping_pr.process()
-        self.create_epoles()
-        self.create_ewires()
-
-        # Treeview에 삽입할 때 위치를 찾아서 insert
-        children = tree.get_children()
-        insert_index = "end"
-        for idx, child in enumerate(children):
-            values = tree.item(child, "values")
-            if int(values[1]) > new_pole.pos:  # values[1] = pos
-                insert_index = idx
-                break
-
-        tree.insert("", insert_index, values=(
-            new_pole.post_number, new_pole.pos, new_pole.span, new_pole.gauge,
-            new_pole.structure, new_pole.section, new_pole.base_type,
-            new_pole.radius, new_pole.pitch, new_pole.cant, new_pole.z
-        ))
-
-        self.refresh_tree()
-        self.runner.log(f'전주 추가 성공 {new_pole.post_number} at {new_pole.pos}')
+        self.commit_change(f'전주 추가 성공 {new_pole.post_number} at {new_pole.pos}')
 
     def delete_pole(self):
         current_tab = self.notebook.tab(self.notebook.select(), "text")
@@ -455,22 +423,24 @@ class AutoPoleEditor(tk.Frame):
             values = tree.item(selected_item[0], "values")
             post_number = values[0]
 
+            # 삭제 후 앞뒤 전주가 이어지는 경간이 전선 경간표에 있는지 확인 (없으면 그 경간 전선이 생성되지 않음)
+            idx = next((i for i, p in enumerate(poles) if p.post_number == post_number), None)
+            if idx is not None and 0 < idx < len(poles) - 1:
+                prev_pole, next_pole = poles[idx - 1], poles[idx + 1]
+                new_span = next_pole.pos - prev_pole.pos
+                try:
+                    self.runner.dataprocessor.get_contact_wire_span(new_span, prev_pole.structure)
+                except ValueError:
+                    messagebox.showerror('전주 삭제 불가',
+                                         f'{post_number}: 삭제하면 {prev_pole.post_number}~{next_pole.post_number} '
+                                         f'경간이 {new_span}m 가 되어 경간표에 없습니다.')
+                    return
+
             # runner.poledata에서 제거
             poles[:] = [p for p in poles if p.post_number != post_number]
-
-            # 앞쪽 전주 갱신
-            PoleUpdator.update_all(poles)
-            #전선 재생성
-            self.runner.wire_data = self.runner.wire_processor.process_to_wire()
-            # 흐름방지장치 복구
-            self.runner.anticreeping_pr.process()
-
-            self.create_epoles()
-            self.create_ewires()
-
-            # Treeview에서 제거
-            tree.delete(selected_item[0])
-            self.refresh_tree()
+            if self.selected_pole is not None and not any(p is self.selected_pole.pole for p in poles):
+                self.selected_pole = None
+            self.commit_change(f'전주 삭제 {post_number}')
 
 
     def edit_tree_cell(self, event, track):
@@ -598,15 +568,11 @@ class AutoPoleEditor(tk.Frame):
         for pole in [start, mid_prev, mid, mid_next, end]:
             AirJointProcessor.process(
                 pole,
-                self.runner.polyline_with_sta,
+                alignment_for(self.runner, pole.track),
                 self.runner.dataprocessor,
                 self.runner.idxlib
             )
-        self.runner.wire_data = self.runner.wire_processor.process_to_wire()
-        self.runner.anticreeping_pr.set_data(self.runner.poledata, self.runner.wire_data)
-        self.runner.anticreeping_pr.process()
-        self.refresh_tree()
-        self.runner.log(f'에어조인트가 설치되었습니다. pos:{mid.pos}')
+        self.commit_change(f'에어조인트가 설치되었습니다. pos:{mid.pos}')
 
     def remove_airjoint(self):
         self.load_selected()
@@ -640,11 +606,7 @@ class AutoPoleEditor(tk.Frame):
                 TunnelSectionProcessor.process(pole, self.runner.dataprocessor, self.runner.idxlib)
             else:
                 NormalSectionProcessor.process(pole, self.runner.dataprocessor, self.runner.idxlib)
-        self.runner.wire_data = self.runner.wire_processor.process_to_wire()
-        self.runner.anticreeping_pr.set_data(self.runner.poledata,self.runner.wire_data)
-        self.runner.anticreeping_pr.process()
-        self.refresh_tree()
-        self.runner.log(f'에어조인트가 제거되었습니다. pos:{mid.pos}')
+        self.commit_change(f'에어조인트가 제거되었습니다. pos:{mid.pos}')
 
     def add_antidevice(self):
         self.load_selected()
@@ -657,8 +619,8 @@ class AutoPoleEditor(tk.Frame):
 
         for track in self.runner.poledata.keys():
             self.runner.anticreeping_pr.add_manual_section(track, start_pos, end_pos, mid_pos)
-        self.refresh_tree()
         self.runner.log(f'흐름방지 장치가 설치되었습니다. pos:{mid_pos}')
+        self.notify_model_changed()
     def remove_antidevice(self):
         self.load_selected()
 
@@ -671,9 +633,8 @@ class AutoPoleEditor(tk.Frame):
             return
         for track in self.runner.poledata.keys():
             self.runner.anticreeping_pr.remove_manual_section(track, start_pos, end_pos, mid_pos)
-
-        self.refresh_tree()
         self.runner.log(f'흐름방지 장치가 제거되었습니다. pos:{mid_pos}')
+        self.notify_model_changed()
 
     def add_pole_with_file(self):
         xlsxname = askopenfilename()
@@ -707,14 +668,10 @@ class AutoPoleEditor(tk.Frame):
 
                 poles.append(new_pole)
 
-            # 시트별 업데이트 및 저장
-            PoleUpdator.update_all(poles)
+            # 시트별 저장 (연결·전선·흐름방지는 아래에서 한 번에 재계산)
             self.runner.poledata[sheet_name] = poles
-            self.runner.wire_data = self.runner.wire_processor.process_to_wire()
-        self.create_epoles()
-        self.create_ewires()
-        self.refresh_tree()
-        self.runner.log(f"엑셀 전주데이터가 로드되었습니다. 계:{len(self.runner.poledata['main'])}")
+        self.selected_pole = None
+        self.commit_change(f"엑셀 전주데이터가 로드되었습니다. 계:{len(self.runner.poledata['main'])}")
 
     def add_airsection(self):
         app = TkDialogService(self)
@@ -758,17 +715,12 @@ class AutoPoleEditor(tk.Frame):
         for pole in poles:
             AirSectionProcessor.process(
                 pole,
-                self.runner.polyline_with_sta,
+                alignment_for(self.runner, pole.track),
                 self.runner.dataprocessor,
                 self.runner.idxlib,
                 mode=mode
             )
-
-        self.runner.wire_data = self.runner.wire_processor.process_to_wire()
-        self.runner.anticreeping_pr.set_data(self.runner.poledata, self.runner.wire_data)
-        self.runner.anticreeping_pr.process()
-        self.refresh_tree()
-        self.runner.log(f'{result}이 설치되었습니다. 시작 pos:{start_epole.pole.pos}')
+        self.commit_change(f'{result}이 설치되었습니다. 시작 pos:{start_epole.pole.pos}')
 
     def remove_airsection(self):
         self.load_selected()
@@ -807,8 +759,5 @@ class AutoPoleEditor(tk.Frame):
                 TunnelSectionProcessor.process(pole, self.runner.dataprocessor, self.runner.idxlib)
             else:
                 NormalSectionProcessor.process(pole, self.runner.dataprocessor, self.runner.idxlib)
-        self.runner.wire_data = self.runner.wire_processor.process_to_wire()
-        self.runner.anticreeping_pr.set_data(self.runner.poledata,self.runner.wire_data)
-        self.runner.anticreeping_pr.process()
-        self.refresh_tree()
+        self.commit_change(f'에어섹션이 제거되었습니다. pos:{start_epole.pole.pos}')
         self.runner.log(f'에어섹션이 제거되었습니다. pos:{start_epole.pole.pos}')

@@ -8,8 +8,8 @@ from tkinter import ttk, messagebox
 
 from matplotlib.collections import LineCollection
 
-from core.equipment.anticreepingdevice.anticreeping_device_processor import AnticreepingDeviceProcessor
-from core.wire.wire_processor import WireProcessor
+from core.model_rebuilder import alignment_for, rebuild
+from event.events import MODEL_CHANGED, POLE_SELECTED, POLES_SELECTED
 from utils.math_util import interpolate_cached, calculate_offset_point
 from xref_module.dxf_controller.dxf_controller import DXFController
 from xref_module.preview.preview_sevice import PreviewService
@@ -27,8 +27,9 @@ class PlotPoleMap(tk.Frame):
         self.runner = runner
         self.events = events
         if self.events:
-            self.events.bind("pole_selected", self.on_pole_selected)
-            self.events.bind("poles_selected", self.on_poles_selected)
+            self.events.bind(POLE_SELECTED, self.on_pole_selected)
+            self.events.bind(POLES_SELECTED, self.on_poles_selected)
+            self.events.bind(MODEL_CHANGED, self.on_model_changed)
 
         # Matplotlib Figure/Axes 생성
         plt.rcParams['font.family'] = 'Malgun Gothic'
@@ -169,6 +170,17 @@ class PlotPoleMap(tk.Frame):
         self.draw_poles()
         self.canvas.draw_idle()
 
+    def on_model_changed(self):
+        """데이터 변경 시 배치도 다시 그리기 (선택 전주 강조 유지)"""
+        if not self.runner:
+            return
+        self.update_plot()
+        # ax.clear() 로 기존 강조 표시가 지워졌으므로 새로 만든다
+        self.selected_pole_scatter = None
+        self.selected_pole_text = None
+        if self.selected_pole is not None:
+            self.highlight_pole(self.selected_pole.pos)
+
     def highlight_pole(self, pos):
         # 선택된 전주 찾기
         for track_name, poles in self.runner.poledata.items():
@@ -250,11 +262,8 @@ class PlotPoleMap(tk.Frame):
             messagebox.showerror('오류', f'{self.selected_epole.pole.post_number}: 지정한 전주는 span 범위에 없습니다.')
             return
 
-        # 본선/상선 구분해서 보간 좌표 계산
-        if self.selected_epole.pole.track == "main":
-            coord, _, v1 = interpolate_cached(self.runner.polyline_with_sta, new_pos)
-        else:  # 상선
-            coord, _, v1 = interpolate_cached(self.runner.offset_line_with_25, new_pos)
+        # 본선/상선 선형으로 보간 좌표 계산
+        coord, _, v1 = interpolate_cached(alignment_for(self.runner, self.selected_epole.pole.track), new_pos)
 
         pos_coord_with_offset = calculate_offset_point(v1, coord, self.selected_epole.pole.gauge)
 
@@ -267,16 +276,10 @@ class PlotPoleMap(tk.Frame):
             self.selected_epole.update(pos=new_pos)
 
         self.selected_epole.pole.coord = pos_coord_with_offset
-        self.runner.wire_processor = WireProcessor(self.runner.dataprocessor, self.runner.alignment_by_track,
-                                                   self.runner.poledata, self.runner.curvelist)
-        self.runner.wire_data = self.runner.wire_processor.process_to_wire()
-        # 흐름방지장치 복구
-        self.runner.anticreeping_pr = AnticreepingDeviceProcessor(self.runner.poledata, self.runner.wire_data,
-                                                                  self.runner.airjoint_list,
-                                                                  self.runner.wire_processor)
-        self.runner.anticreeping_pr.process()
+        self.selected_pole = self.selected_epole.pole
+        rebuild(self.runner)
         self.runner.log(f"전주 {self.selected_epole.pole.post_number} 이동 완료: {new_pos}")
-
-        self.highlight_pole(new_pos)
         if self.events:
-            self.events.emit('pole_moved')
+            self.events.emit(MODEL_CHANGED)
+        else:
+            self.on_model_changed()
