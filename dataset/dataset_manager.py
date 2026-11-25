@@ -28,4 +28,6 @@ def load_dataset(designspeed, iscustommode):
         span_data[sheet_name] = dict(zip(df['길이'], df['인덱스']))
 
     base_data['span_data'] = span_data
+    # 오류 메시지에서 어떤 파일이 로드됐는지 알 수 있도록 기록
+    base_data['_source'] = {'json': filename, 'spandata': xlsxname}
     return base_data

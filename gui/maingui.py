@@ -706,6 +706,9 @@ class AutoPoleApp(tk.Tk):
             runner.log_widget = self.log_box
             self.runner = runner
             # 저장 당시 설정으로 UI를 맞춘 뒤 라이브러리/데이터셋 재로드
+            if int(self.entry_speed_var.get()) != runner.designspeed or bool(self.is_custom_mode.get()) != bool(runner.iscustommode):
+                self.log_append(f"저장된 설정으로 변경: 설계속도 {runner.designspeed}, "
+                                f"사용자정의 모드 {'ON' if runner.iscustommode else 'OFF'}", "WARN")
             self.entry_speed_var.set(runner.designspeed)
             self.is_custom_mode.set(bool(runner.iscustommode))
             self.refresh_library()
@@ -736,7 +739,7 @@ class AutoPoleApp(tk.Tk):
         self.db = DatasetGetter(self.dataset)
         if self.runner:
             self.runner.dataprocessor = self.db
-        self.log_append("데이터셋 로드됨", "INFO")
+        self.log_append(f"데이터셋 로드됨: {self.dataset.get('_source', {}).get('json')}", "INFO")
 
     def edit_dataset(self):
         if self.dataset is None:

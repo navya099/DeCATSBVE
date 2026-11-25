@@ -92,3 +92,15 @@ def test_offset_polyline_keeps_station_and_z():
     # 상선 선형으로 보간/고도 계산이 동작해야 함 (이전: z 가 빠져 unpack 에러)
     interpolate_cached(right, 30)
     assert get_elevation_pos(30, right) == pytest.approx(101.2)
+
+
+def test_bracket_lookup_error_names_missing_key_and_source():
+    from dataset.dataset_getter import DatasetGetter
+    ds = {'bracket': {'index': {'일반개소': {'토공': {'O': 630}}}}, '_source': {'json': 'c:/temp/x.json'}}
+    g = DatasetGetter(ds)
+    assert g.get_bracket_codes('일반개소', '토공', 'O') == 630
+    assert g.get_bracket_codes('일반개소', '토공') == {'O': 630}
+    with pytest.raises(ValueError) as e:
+        g.get_bracket_codes('일반개소', '토공', 'I')
+    msg = str(e.value)
+    assert "'I'" in msg and 'bracket.index.일반개소.토공' in msg and "['O']" in msg and 'x.json' in msg
