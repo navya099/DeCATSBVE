@@ -6,7 +6,10 @@ MODEL_CHANGED 이벤트로 알린다 (event/events.py).
 """
 from core.equipment.anticreepingdevice.anticreeping_device_processor import AnticreepingDeviceProcessor
 from core.pole.pole_updator import PoleUpdator
+from core.pole.poledata import new_pole_uid
+from core.wire import wire_overrides
 from core.wire.wire_processor import WireProcessor
+from enums.section_type import FlowStop, SectionType
 
 
 def alignment_for(runner, track):
@@ -16,10 +19,29 @@ def alignment_for(runner, track):
     return runner.polyline_with_sta if track == 'main' else runner.offset_line_with_25
 
 
+def normalize(runner):
+    """구버전 데이터(.dat) 보정: 전주 uid·flowstop 필드 추가, 구간 문자열 → SectionType,
+    section 에 들어 있던 흐름방지 위치 → flowstop. 여러 번 호출해도 안전."""
+    for poles in (runner.poledata or {}).values():
+        for pole in poles:
+            if not getattr(pole, 'uid', None):
+                pole.uid = new_pole_uid()
+            flowstop = FlowStop.parse(getattr(pole, 'flowstop', None))
+            legacy_flowstop = FlowStop.parse(pole.section)
+            if legacy_flowstop is not None:
+                flowstop = flowstop or legacy_flowstop
+                pole.section = None
+            pole.flowstop = flowstop
+            pole.section = SectionType.parse(pole.section)
+    if not hasattr(runner, 'wire_overrides') or runner.wire_overrides is None:
+        runner.wire_overrides = {}
+
+
 def rebuild(runner):
     """runner.poledata 기준으로 전주 연결 → 전선 → 흐름방지장치를 처음부터 다시 계산"""
     if not runner.poledata:
         return
+    normalize(runner)
     # 1) 인접 전주 연결 (next_pos, span 등). 레일 단절 구간은 잇지 않음
     for track, poles in runner.poledata.items():
         PoleUpdator.update_all(poles, alignment_for(runner, track))
@@ -28,6 +50,11 @@ def rebuild(runner):
     runner.wire_processor = WireProcessor(runner.dataprocessor, runner.alignment_by_track,
                                           runner.poledata, runner.curvelist)
     runner.wire_data = runner.wire_processor.process_to_wire()
+
+    # 2-1) 전선 상세 편집 내용(경간 단위) 다시 적용. 흐름방지선이 편집된 전차선 기준으로 만들어지도록 흐름방지보다 먼저
+    applied, pruned = wire_overrides.apply(runner, alignment_for)
+    if applied or pruned:
+        runner.log(f"전선 편집 내용 적용: 전선 {applied}개" + (f", 삭제된 전주 경간 {pruned}개 정리" if pruned else ""))
 
     # 3) 흐름방지장치: 사용자 추가/삭제 요청은 유지하고, 현재 배치에서 다시 계산
     anticreeping = getattr(runner, 'anticreeping_pr', None)

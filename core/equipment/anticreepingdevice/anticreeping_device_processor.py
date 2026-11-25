@@ -3,17 +3,17 @@ from core.equipment.equipment_data import EquipmentDATA
 from utils.math_util import change_permile_to_degree, calculate_curve_angle, calculate_slope
 
 
-FLOWSTOP_TAGS = ("흐름방지 시작점", "흐름방지 중간점", "흐름방지 끝점")
+from enums.section_type import FlowStop, SectionType
+
+FLOWSTOP_TAGS = (FlowStop.START, FlowStop.MIDDLE, FlowStop.END)
 FLOWSTOP_EQUIPMENT_TYPES = ('흐름방지장치', '봉강지선')
-AJ_START = "에어조인트 시작점 (1호주)"
-AJ_END = "에어조인트 끝점 (5호주)"
 
 
 class AnticreepingDeviceProcessor:
     """흐름방지장치 처리기.
 
     process() 를 부를 때마다 현재 전주 데이터에서 처음부터 다시 계산한다 (상태를 누적하지 않음):
-      1) 이전 계산 결과(흐름방지 구간 태그, 장비, 흐름방지선) 제거
+      1) 이전 계산 결과(전주 흐름방지 위치 PoleDATA.flowstop, 장비, 흐름방지선) 제거
       2) 자동 구간: 인접한 두 에어조인트 사이(앞 에어조인트 끝점 ~ 다음 에어조인트 시작점)의 가운데 전주
       3) 사용자 추가/삭제 요청(manual_ops)을 요청 순서대로 다시 적용
       4) 전주 장비·전선 반영
@@ -41,11 +41,12 @@ class AnticreepingDeviceProcessor:
 
     # ── 계산 ────────────────────────────────────────
     def clear(self):
-        """이전 계산 결과 제거 (전주 구간 태그·장비, 흐름방지선)"""
+        """이전 계산 결과 제거 (전주 흐름방지 위치·장비, 흐름방지선)"""
         for poles in self.poledata.values():
             for pole in poles:
-                if pole.section in FLOWSTOP_TAGS:
+                if pole.section in FLOWSTOP_TAGS:  # 구버전 데이터: 흐름방지 위치가 section 에 저장돼 있던 경우
                     pole.section = None
+                pole.flowstop = None
                 pole.equipments = [e for e in pole.equipments if e.type not in FLOWSTOP_EQUIPMENT_TYPES]
         for wires in (self.wiredata or {}).values():
             for wire in wires:
@@ -69,12 +70,12 @@ class AnticreepingDeviceProcessor:
         gaps = []
         last_end = None
         for pole in sorted(poles, key=lambda p: p.pos):
-            if pole.section == AJ_END:
+            if pole.section == SectionType.AJ_END:
                 last_end = pole.pos
-            elif pole.section == AJ_START and last_end is not None:
+            elif pole.section == SectionType.AJ_START and last_end is not None:
                 gaps.append((last_end, pole.pos))
                 last_end = None
-            elif pole.section is not None and pole.section not in FLOWSTOP_TAGS:
+            elif pole.section is not None:
                 last_end = None  # 사이에 다른 구간(에어조인트 중간 등)이 끼면 인접 쌍이 아님
         return gaps
 
@@ -149,15 +150,14 @@ class AnticreepingDeviceProcessor:
                 cw = next((w for w in wire.wires if w.label == '전차선'), None)
                 if cw is None:
                     continue  # 전차선이 없으면 건너뜀
-                if pole.section is None or pole.section in FLOWSTOP_TAGS:
-                    pole.section = device['tag']  # 에어조인트 등 다른 구간 태그는 유지
+                pole.flowstop = device['tag']  # 구간(section)은 그대로 둠
                 # 기존 흐름방지 장치 제거
                 pole.equipments = [
                     e for e in pole.equipments
                     if e.type not in ['흐름방지장치', '봉강지선']
                 ]
 
-                if device['tag'] == "흐름방지 시작점":
+                if device['tag'] == FlowStop.START:
                     x1 = pole.gauge
                     x2 = cw.end_point[0]
                     adjusted_angle = calculate_curve_angle(self.wire_processor.polyline_by_track[track_name], pole.pos, pole.next_pos,
@@ -171,7 +171,7 @@ class AnticreepingDeviceProcessor:
                         pole.equipments.append(
                             EquipmentDATA(name='흐름방지장치_강관주용', index=679, offset=(pole.gauge, 0),
                                           rotation=adjusted_angle, type='흐름방지장치'))
-                elif device['tag'] == "흐름방지 끝점":
+                elif device['tag'] == FlowStop.END:
                     x1 = pole.gauge
                     x2 = cw.offset[0]
                     adjusted_angle = calculate_curve_angle(self.wire_processor.polyline_by_track[track_name], pole.pos,
@@ -200,10 +200,10 @@ class AnticreepingDeviceProcessor:
                 cw = next((w for w in wire.wires if w.label == '전차선'), None)
                 if cw is None:
                     continue  # 전차선이 없으면 건너뜀
-                if device['tag'] in ["흐름방지 시작점"] and wire:
+                if device['tag'] == FlowStop.START and wire:
                     extrawire = self.make_flowstop_wire(pole, cw, track_name, isstart=True)
                     wire.add_wire(extrawire)
-                elif device['tag'] in ["흐름방지 중간점"] and wire:
+                elif device['tag'] == FlowStop.MIDDLE and wire:
                     extrawire = self.make_flowstop_wire(pole, cw, track_name, isstart=False)
                     wire.add_wire(extrawire)
 

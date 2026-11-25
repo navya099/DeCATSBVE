@@ -21,6 +21,7 @@ from dataset.dataset_getter import DatasetGetter
 from dataset.dataset_manager import load_dataset
 from event.event_controller import EventController
 from event.events import MODEL_CHANGED
+from core.model_rebuilder import normalize
 from file_io.filemanager import write_to_file, save_runner, load_runner
 from gui.dataset_gui import DataSetEditor
 from gui.maineditor import AutoPoleEditor
@@ -715,6 +716,7 @@ class AutoPoleApp(tk.Tk):
         try:
             runner = load_runner(path)
             runner.log_widget = self.log_box
+            normalize(runner)  # 구버전 .dat 보정 (전주 uid, 흐름방지 위치 분리, 구간 enum)
             self.runner = runner
             # 저장 당시 설정으로 UI를 맞춘 뒤 라이브러리/데이터셋 재로드
             if int(self.entry_speed_var.get()) != runner.designspeed or bool(self.is_custom_mode.get()) != bool(runner.iscustommode):

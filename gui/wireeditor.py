@@ -2,7 +2,9 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-from event.events import POLE_SELECTED, WIRE_SELECTED
+from core.model_rebuilder import rebuild
+from core.wire import wire_overrides
+from event.events import MODEL_CHANGED, POLE_SELECTED, WIRE_SELECTED
 
 class WireEditor(tk.Toplevel):
     def __init__(self, runner, event=None):
@@ -33,7 +35,9 @@ class WireEditor(tk.Toplevel):
         btn_frame = ttk.Frame(self)
         btn_frame.pack(side="bottom", pady=10)
         tk.Button(btn_frame, text="적용", command=self.commit).pack(side="left", padx=5)
+        tk.Button(btn_frame, text="자동값으로 되돌리기", command=self.reset_to_auto).pack(side="left", padx=5)
         tk.Button(btn_frame, text="닫기", command=self.exit_windows).pack(side="left", padx=5)
+        self.protocol("WM_DELETE_WINDOW", self.exit_windows)
 
     def remove_wire_tab(self, index=None):
         # 현재 선택된 탭 인덱스 가져오기
@@ -110,7 +114,34 @@ class WireEditor(tk.Toplevel):
         })
 
     def exit_windows(self):
+        if self.event:  # 닫힌 창이 계속 이벤트를 받지 않도록
+            self.event.unbind(POLE_SELECTED, self.on_pole_selected)
+            self.event.unbind(WIRE_SELECTED, self.on_wire_selected)
         self.destroy()
+
+    def _span_positions(self):
+        """편집이 영향을 주는 경간(앞 전주 pos): 현재 + 앞뒤 (끝점·시작점이 서로 맞춰지므로)"""
+        positions = [self.ewire.wire.pos]
+        if self.ewire.prev_wire:
+            positions.append(self.ewire.prev_wire.wire.pos)
+        if self.ewire.next_wire:
+            positions.append(self.ewire.next_wire.wire.pos)
+        return positions
+
+    def _rebuild_and_notify(self):
+        """전선 편집 내용(경간 단위)을 반영해 재계산하고 모든 화면 갱신"""
+        rebuild(self.runner)
+        if self.event:
+            self.event.emit(MODEL_CHANGED)
+
+    def reset_to_auto(self):
+        if not self.ewire:
+            messagebox.showerror('에러', '전선이 선택되지 않았습니다.')
+            return
+        track = self.ewire.wire.track_name
+        n = wire_overrides.clear(self.runner, track, self._span_positions())
+        self.runner.log(f'전선 편집 초기화: 경간 {n}개를 자동 계산값으로 되돌림')
+        self._rebuild_and_notify()
 
     # 초기화 이후에도 호출 가능
     def bind_events(self):
@@ -165,6 +196,11 @@ class WireEditor(tk.Toplevel):
                 )
 
     def commit(self):
+        if not self.ewire:
+            messagebox.showerror('에러', '전선이 선택되지 않았습니다.')
+            return
+        track = self.ewire.wire.track_name
+        before = wire_overrides.snapshot(self.runner, track, self._span_positions())
         try:
             for i, entry in enumerate(self.wire_entries):
                 if entry:
@@ -187,6 +223,10 @@ class WireEditor(tk.Toplevel):
                         if self.ewire.prev_wire and i < len(self.ewire.prev_wire.wire.wires):
                             self.ewire.prev_wire.wire.wires[i].end_point = wire_data["offset"]
 
-            self.runner.log(f'전선 편집 성공!')
+            # 바뀐 지지점을 경간 단위로 보관 → 이후 다른 편집으로 재계산돼도 유지
+            n = wire_overrides.record_changes(self.runner, track, before)
+            self.runner.log(f'전선 편집 성공! (전선 {n}개 지지점 저장)')
         except Exception as e:
             messagebox.showerror('에러', f'전선 커밋 작업에 실패했습니다. {e}')
+            return
+        self._rebuild_and_notify()  # 앞뒤 경간 각도까지 다시 계산

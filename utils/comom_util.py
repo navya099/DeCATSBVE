@@ -3,8 +3,8 @@ import random
 import math
 
 
-from enums.airjoint_section import AirJoint
 from utils.math_util import return_new_point
+from enums.section_type import SectionType
 
 
 def find_last_block(data):
@@ -81,11 +81,11 @@ def define_airjoint_section(positions, airjoint_span):
         if is_near_multiple_of_DIG(pos):  # 조건 충족 시
             next_values = positions[i + 1:min(i + 6, len(positions))]  # 다음 5개 값 가져오기
             tags = [
-                AirJoint.START.value,
-                AirJoint.POINT_2.value,
-                AirJoint.MIDDLE.value,
-                AirJoint.POINT_4.value,
-                AirJoint.END.value
+                SectionType.AJ_START,
+                SectionType.AJ_2,
+                SectionType.AJ_MIDDLE,
+                SectionType.AJ_4,
+                SectionType.AJ_END
             ]
 
             # (전주 위치, 태그) 쌍을 리스트에 추가 (최대 5개까지만)

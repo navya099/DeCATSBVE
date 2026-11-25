@@ -1,6 +1,7 @@
 from core.alignment.define_funtion import iscurve
 from core.wire.aj_wire_processor import AirjointWireProcessor
 from core.wire.as_wire_processor import AirSectionWireProcessor
+from enums.section_type import SectionType
 from utils.math_util import calculate_curve_stagger, change_permile_to_degree
 
 
@@ -28,13 +29,12 @@ class WireSectionHandler:
 
 
 
-        if pole.section is None:
+        section = SectionType.parse(pole.section)  # 흐름방지 위치는 section 이 아님(PoleDATA.flowstop)
+        if section is None:
             self.process_normal_section(pole,next_pole, wire, pitch_angle, start_offset, end_offset, cw_index)
-        elif pole.section and pole.section.startswith("흐름방지"):
-            self.process_normal_section(pole, next_pole, wire, pitch_angle, start_offset, end_offset, cw_index)
-        elif pole.section and pole.section.startswith("에어조인트"):
+        elif section.is_airjoint:
             self.process_airjoint_section(pole, next_pole,wire, pitch_angle, start_offset, cw_index)
-        elif pole.section and pole.section.startswith("에어섹션"):
+        elif section.is_airsection:
             self.process_airsection(pole, next_pole,wire, pitch_angle, start_offset, cw_index)
 
     def process_normal_section(self, pole,next_pole,  wire, pitch_angle, offset1, offset2, index):

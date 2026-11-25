@@ -6,6 +6,7 @@ from core.pole.normal_section_processor import NormalSectionProcessor
 from core.pole.tunnel_section_processor import TunnelSectionProcessor
 from dataset.dataset_getter import DatasetGetter
 from utils.math_util import calculate_curve_angle
+from enums.section_type import SectionType
 
 
 class AirSectionProcessor:
@@ -24,7 +25,7 @@ class AirSectionProcessor:
         feeder_idx = dataprocessor.get_feeder_insulator_idx(pole.structure)
         feeder_name =idxlib.get_name(feeder_idx)
         # 평행틀 설비 인덱스 가져오기
-        length = '1.6m' if pole.section in ['에어섹션1구간_3호주', '에어섹션2구간_2호주'] else '1m'
+        length = '1.6m' if pole.section in [SectionType.AS1_3, SectionType.AS2_2] else '1m'
         spreader_idx = dataprocessor.get_spreader_idx(pole.structure, length)
         spreader_name = idxlib.get_name(spreader_idx)
         #F브래킷 인상높이

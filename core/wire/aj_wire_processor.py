@@ -1,6 +1,7 @@
 from core.wire.common_processor import CommonWireProcessor
 from utils.comom_util import initialrize_tenstion_device
 from utils.math_util import calculate_curve_angle, calculate_curve_stagger
+from enums.section_type import SectionType
 class AirjointWireProcessor:
     def __init__(self, compros: CommonWireProcessor, datap, al):
         self.common = compros
@@ -33,7 +34,7 @@ class AirjointWireProcessor:
             aj_end_x *= -1
             f_end_x *= -1
 
-        if pole.section == '에어조인트 시작점 (1호주)':
+        if pole.section == SectionType.AJ_START:
             # 본선
             start_offset = pole.brackets[0].stagger
             start_cw_height = self.datap.get_contact_wire_height(pole.structure)
@@ -61,7 +62,7 @@ class AirjointWireProcessor:
                 (pererall_d, h1), (f_start_x, end_cw_height + f_start_y), pitch_angle, label='무효전차선')
             cw.station = sta2
             wire.add_wire(cw)
-        elif pole.section == '에어조인트 (2호주)':
+        elif pole.section == SectionType.AJ_2:
             # 본선
             start_cw_height = self.datap.get_contact_wire_height(pole.structure)
             end_cw_height = self.datap.get_contact_wire_height(next_pole.structure)
@@ -82,7 +83,7 @@ class AirjointWireProcessor:
                 self.al, icw_index, pole.pos, pole.next_pos, pole.z, pole.next_z,
                 (f_start_x, start_cw_height + f_start_y), (aj_middle1_x, end_cw_height), pitch_angle, label='무효전차선')
             )
-        elif pole.section == '에어조인트 중간주 (3호주)':
+        elif pole.section == SectionType.AJ_MIDDLE:
             # 본선 >무효선 상승
             start_cw_height = self.datap.get_contact_wire_height(pole.structure)
             end_cw_height = self.datap.get_contact_wire_height(next_pole.structure)
@@ -106,7 +107,7 @@ class AirjointWireProcessor:
                 (aj_middle1_x, start_cw_height), (aj_end_x, end_cw_height), pitch_angle, label='무효->본선전차선')
             )
 
-        elif pole.section == '에어조인트 (4호주)':
+        elif pole.section == SectionType.AJ_4:
             # 본선
             end_offset = next_pole.brackets[0].stagger
             start_cw_height = self.datap.get_contact_wire_height(pole.structure)
@@ -131,7 +132,7 @@ class AirjointWireProcessor:
                 self.al, icw_index, pole.pos, pole.next_pos, pole.z, pole.next_z,
                 (f_end_x, start_cw_height + f_start_y), (pole.next_gauge, h1), pitch_angle, label='무효전차선')
             )
-        elif pole.section == '에어조인트 끝점 (5호주)':
+        elif pole.section == SectionType.AJ_END:
             # 본선
             start_offset = pole.brackets[0].stagger
             end_offset = next_pole.brackets[0].stagger
