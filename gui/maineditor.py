@@ -392,8 +392,8 @@ class AutoPoleEditor(tk.Frame):
         asemlbapp.bind_events()
 
     def open_wire_editor(self):
-        we = WireEditor(self.runner, self.events)
-        we.bind_events()
+        """선택한 경간으로 전선 상세 편집기 열기 (이후 편집기 선택을 따라감)"""
+        return WireEditor(self.runner, self.events, selection=self.selected_wire)
 
     def add_pole(self):
         track = self._current_track()

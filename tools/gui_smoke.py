@@ -178,45 +178,78 @@ select('main', p2.pos)
 pl.move_left()
 check('다른 전주 이동 후 수동 흐름방지 요청 유지')
 
-# 6) 전선 상세 편집기: 끝점 수정 → 다른 편집 후에도 유지 → 자동값으로 되돌리기
-from gui.wireeditor import WireEditor  # noqa: E402
-from event.events import WIRE_SELECTED  # noqa: E402
+# 6) 전선 상세 편집기: 표에서 전선 선택 → 지지점 수정 적용 → 다른 편집 후 유지 → 전선 추가·삭제 → 경간 자동값
+from event.events import MODEL_CHANGED, WIRE_SELECTED  # noqa: E402
+from core.wire import wire_overrides  # noqa: E402
 p = normal_pole('main', 5)
 select('main', p.pos)
-we = WireEditor(runner, app.events)
-we.bind_events()
-ed.load_selected()  # WIRE_SELECTED → 편집기 탭 채움
+n_wire_listeners = len(app.events._listeners.get(WIRE_SELECTED, []))
+n_model_listeners = len(app.events._listeners.get(MODEL_CHANGED, []))
+we = ed.open_wire_editor()
 app.update()
-tab = next(i for i, e in enumerate(we.wire_entries) if e['wire_name'] == '전차선')
-we.wire_entries[tab]['next_xoffset'].set(0.33)
-we.wire_entries[tab]['next_height'].set(5.31)
-we.commit()
+
+
+def wire_rows():
+    return {we.tree.item(i, 'values')[0] + '|' + i: we.tree.item(i, 'values') for i in we.tree.get_children()}
+
+
+def pick(key):
+    we.tree.selection_set(key)
+    we._on_row_selected()
+    app.update()
+
+
+def cw(pos, key='전차선#0'):
+    info = wire_overrides.span_info(runner, 'main', pos)
+    return next((r for r in info.wires if r.key == key), None)
+
+
+if not we.tree.exists('전차선#0'):
+    failures.append('전선 편집기 표에 전차선 없음'); print('     -', list(wire_rows()))
+pick('전차선#0')
+we.ex_var.set(0.33)
+we.ey_var.set(5.31)
+we.apply_edit()
 check('전선 편집 적용')
+nxt_pos = cw(p.pos).end_point and wire_overrides.span_info(runner, 'main', p.pos).next_pos
+if cw(p.pos).end_point != (0.33, 5.31) or cw(nxt_pos).offset != (0.33, 5.31):
+    failures.append('전선 편집(끝점·뒤 경간 시작점) 반영 안 됨'); print('     -', cw(p.pos), cw(nxt_pos))
+if we.tree.item('전차선#0', 'values')[-1] != '편집':
+    failures.append('편집기 표 상태가 갱신되지 않음')
 
-
-def cw_end(pos):
-    wd = next(w for w in runner.wire_data['main'] if w.pos == pos)
-    return next(w.end_point for w in wd.wires if w.label == '전차선')
-
-
-edited = (0.33, 5.31)
-if cw_end(p.pos) != edited:
-    failures.append('전선 편집 적용 안 됨'); print('     -', cw_end(p.pos))
 q = normal_pole('main', 14)
 select('main', q.pos)
 pl.move_right()
 check('다른 전주 이동 후 전선 편집 유지')
-if cw_end(p.pos) != edited:
-    failures.append('재계산 후 전선 편집 사라짐'); print('     -', cw_end(p.pos))
-select('main', p.pos)
-we.reset_to_auto()
-check('전선 편집 자동값으로 되돌리기')
-if cw_end(p.pos) == edited or runner.wire_overrides:
-    failures.append('되돌리기 안 됨')
-n_listeners = len(app.events._listeners.get(WIRE_SELECTED, []))
+if cw(p.pos).end_point != (0.33, 5.31):
+    failures.append('재계산 후 전선 편집 사라짐')
+
+select('main', p.pos)      # 편집기가 선택을 따라옴
+app.update()
+we.label_var.set('부급전선')
+we.index_var.set(1239)
+we.sx_var.set(-2.5); we.sy_var.set(7.0); we.ex_var.set(-2.5); we.ey_var.set(7.0)
+we.add_wire()
+check('전선 추가')
+added = [i for i in we.tree.get_children() if i.startswith('added:')]
+if len(added) != 1 or we.tree.item(added[0], 'values')[-1] != '추가':
+    failures.append('추가 전선이 편집기에 표시되지 않음')
+af = next((i for i in we.tree.get_children() if we.tree.item(i, 'values')[0] == 'AF'), None)
+pick(af)
+we.remove_wire()
+check('전선 삭제(AF)')
+if we.tree.item(af, 'values')[-1] != '삭제됨':
+    failures.append('삭제 전선 표시 안 됨')
+we.reset_span()
+check('경간 전체 자동값')
+if any(i.startswith('added:') for i in we.tree.get_children()) or we.tree.item(af, 'values')[-1] != '자동':
+    failures.append('경간 자동값 복원 안 됨')
+for pos in list({cw(p.pos) and p.pos, nxt_pos}):
+    wire_overrides.reset_span(runner, 'main', pos)
 we.exit_windows()
 app.update()
-if len(app.events._listeners.get(WIRE_SELECTED, [])) != n_listeners - 1:
+if (len(app.events._listeners.get(WIRE_SELECTED, [])) != n_wire_listeners
+        or len(app.events._listeners.get(MODEL_CHANGED, [])) != n_model_listeners):
     failures.append('전선 편집기를 닫아도 이벤트 구독이 남음')
 
 # 7) 상선 편집 (복선일 때)

@@ -55,7 +55,7 @@ class BaseRunner:
         # 상선 선형을 BVEParser rail_info.txt 의 실제 레일 좌표로 만들 때 사용 (None 이면 일정 간격 오프셋)
         self.rail_info_file_path = None
         self.sub_rail_key: int | None = None
-        # 전선 상세 편집 내용: {(트랙, 앞 전주 uid, 뒤 전주 uid): {전선키: {'offset','end_point'}}} (core/wire/wire_overrides.py)
+        # 전선 상세 편집 내용 (경간 단위 지지점 수정·전선 추가/삭제): core/wire/wire_overrides.py 참고
         self.wire_overrides = {}
 
     def run(self):
