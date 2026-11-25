@@ -5,12 +5,14 @@
 사용 예:
     python -m tools.headless --config tests/regression_cases/synthetic_single/case.json --out out/single
     python -m tools.headless --info-dir c:/temp/info --structure c:/temp/info/구조물.xlsx \
-        --speed 250 --end 90850 --out out/run1
+        --speed 250 --end 90850 --out out/run1   (info-dir 에 bve_alignment.txt 가 있으면 그것을 사용)
     python -m tools.headless --info-dir D:/route/info --structure D:/route/구조물.xlsx \
         --speed 150 --mode double --track-distance 4.4 --sub-rail 1 --out out/double
 
 설정 파일(case.json) 키 (경로는 case.json 이 있는 폴더 기준 상대경로 가능):
-    coord, curve, pitch, structure   : 입력 파일 (필수)
+    alignment                        : BVEParser bve_alignment.txt (권장, 좌표·곡선·구배 한 파일)
+    coord, curve, pitch              : alignment 가 없을 때 기존 3개 파일
+    structure                        : 구조물 xlsx (필수)
     rail_info, sub_rail              : 상선을 rail_info.txt 실제 레일로 만들 때 (선택)
     idxlib                           : 인덱스 라이브러리 CSV(인덱스,파일명,경로) 또는
                                        .freeobj(N) 경로 목록 txt (선택, 없으면 이름 None)
@@ -45,10 +47,12 @@ from xref_module.index_libmgr import IndexLibrary  # noqa: E402
 DEFAULTS = {
     'speed': 150, 'start': 0.0, 'end': None, 'brokenchain': 0.0,
     'mode': 'single', 'main_direction': 'L', 'tunnel_direction': 'L',
-    'track_distance': 4.3, 'sub_rail': None, 'rail_info': None, 'idxlib': None,
+    'track_distance': 4.3, 'sub_rail': None, 'rail_info': None, 'idxlib': None, 'alignment': None,
+    'coord': None, 'curve': None, 'pitch': None,
     'custom_json': None, 'custom_spandata': None,
 }
-PATH_KEYS = ('coord', 'curve', 'pitch', 'structure', 'rail_info', 'idxlib', 'custom_json', 'custom_spandata')
+PATH_KEYS = ('alignment', 'coord', 'curve', 'pitch', 'structure', 'rail_info', 'idxlib', 'custom_json',
+             'custom_spandata')
 ERROR_PATTERN = re.compile(r'에러|오류|Error|error')
 
 
@@ -80,13 +84,16 @@ def load_index_library(path):
     return IndexLibrary(pd.DataFrame(rows, columns=['인덱스', '파일명', '경로']))
 
 
-def last_station(curve_path):
-    """curve_info.txt 의 마지막 측점 (종점 미지정 시 사용)"""
+def last_station(path):
+    """선형 파일(bve_alignment.txt 또는 curve_info.txt)의 마지막 측점 (종점 미지정 시 사용)"""
     last = None
-    with open(curve_path, encoding='utf-8') as f:
+    with open(path, encoding='utf-8-sig') as f:
         for line in f:
-            if line.strip():
-                last = float(line.split(',')[0])
+            head = line.split(',')[0].strip()
+            try:
+                last = float(head)
+            except ValueError:
+                continue  # 머리글
     return last
 
 
@@ -94,6 +101,7 @@ def build_runner(cfg):
     """설정으로 AutoRunner 구성 (GUI maingui.update_inputs / _apply_track_settings 와 같은 규칙)"""
     cfg = {**DEFAULTS, **cfg}
     r = AutoRunner()
+    r.alignment_file_path = cfg['alignment']
     r.coord_file_path = cfg['coord']
     r.curve_file_path = cfg['curve']
     r.pitch_file_path = cfg['pitch']
@@ -101,7 +109,7 @@ def build_runner(cfg):
     r.designspeed = int(cfg['speed'])
     r.track_mode = cfg['mode']
     r.start_station = float(cfg['start'])
-    r.end_station = float(cfg['end'] if cfg['end'] is not None else last_station(cfg['curve']))
+    r.end_station = float(cfg['end'] if cfg['end'] is not None else last_station(cfg['alignment'] or cfg['curve']))
     r.brokenchain = float(cfg['brokenchain'])
     r.idxlib = load_index_library(cfg['idxlib'])
 
@@ -120,7 +128,8 @@ def build_runner(cfg):
         r.tunnel_direction.update(main=-main_side, sub=main_side)  # 복선 터널은 방향 반전
         if cfg['sub_rail'] is not None:
             r.sub_rail_key = int(cfg['sub_rail'])
-            r.rail_info_file_path = cfg['rail_info'] or os.path.join(os.path.dirname(cfg['coord']), 'rail_info.txt')
+            info_dir = os.path.dirname(cfg['alignment'] or cfg['coord'])
+            r.rail_info_file_path = cfg['rail_info'] or os.path.join(info_dir, 'rail_info.txt')
     else:
         raise ValueError(f"mode 는 single 또는 double: {r.track_mode}")
     return r
@@ -179,7 +188,9 @@ def run(cfg, out_dir, quiet=True):
 def main(argv=None):
     ap = argparse.ArgumentParser(description='DeCATSBVE 헤드리스 실행')
     ap.add_argument('--config', help='case.json (다른 인자보다 먼저 적용, 인자로 덮어쓰기 가능)')
-    ap.add_argument('--info-dir', help='bve_coordinates.txt / curve_info.txt / pitch_info.txt / rail_info.txt 폴더')
+    ap.add_argument('--info-dir', help='BVEParser 출력 폴더 (bve_alignment.txt 우선, 없으면 '
+                                       'bve_coordinates/curve_info/pitch_info.txt, 복선은 rail_info.txt)')
+    ap.add_argument('--alignment', help='bve_alignment.txt 경로')
     ap.add_argument('--structure', help='구조물 xlsx (교량/터널 시트)')
     ap.add_argument('--idxlib', help='인덱스 라이브러리 CSV 또는 .freeobj 목록 txt')
     ap.add_argument('--speed', type=int)
@@ -200,17 +211,22 @@ def main(argv=None):
 
     cfg = load_config(a.config) if a.config else {}
     if a.info_dir:
-        cfg.update(coord=os.path.join(a.info_dir, 'bve_coordinates.txt'),
-                   curve=os.path.join(a.info_dir, 'curve_info.txt'),
-                   pitch=os.path.join(a.info_dir, 'pitch_info.txt'))
-    for key in ('structure', 'idxlib', 'speed', 'start', 'end', 'brokenchain', 'mode', 'main_direction',
+        alignment = os.path.join(a.info_dir, 'bve_alignment.txt')
+        if os.path.isfile(alignment):
+            cfg['alignment'] = alignment
+        else:
+            cfg.update(coord=os.path.join(a.info_dir, 'bve_coordinates.txt'),
+                       curve=os.path.join(a.info_dir, 'curve_info.txt'),
+                       pitch=os.path.join(a.info_dir, 'pitch_info.txt'))
+    for key in ('alignment', 'structure', 'idxlib', 'speed', 'start', 'end', 'brokenchain', 'mode', 'main_direction',
                 'tunnel_direction', 'track_distance', 'sub_rail', 'rail_info', 'custom_json', 'custom_spandata'):
         value = getattr(a, key)
         if value is not None:
             cfg[key] = value
-    missing = [k for k in ('coord', 'curve', 'pitch', 'structure') if not cfg.get(k)]
+    needed = ('structure',) if cfg.get('alignment') else ('coord', 'curve', 'pitch', 'structure')
+    missing = [k for k in needed if not cfg.get(k)]
     if missing:
-        ap.error(f"입력 파일 지정 필요: {missing} (--config 또는 --info-dir/--structure)")
+        ap.error(f"입력 파일 지정 필요: {missing} (--config 또는 --info-dir/--alignment/--structure)")
 
     summary = run(cfg, a.out, quiet=not a.verbose)
     for track, s in summary['tracks'].items():

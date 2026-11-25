@@ -1,4 +1,4 @@
-"""회귀 테스트용 합성 노선 생성 (BVEParser ApplyRouteData 출력 형식)
+"""회귀 테스트용 합성 노선 생성 (BVEParser ApplyRouteData 출력 형식: bve_alignment.txt + 기존 3개 파일 + rail_info.txt)
 
     python tests/regression_cases/make_synthetic_route.py
 
@@ -60,6 +60,7 @@ def main():
     th0 = math.radians(30)
     d = (math.cos(th0), math.sin(th0))
     coords, curves, pitches, rails = [], [], [], []
+    alignment = ['측점,X,Y,Z,Bearing,Radius,Cant,Pitch,height']
     last_rail_x = None
     for i in range(N_BLOCKS):
         s = i * BLOCK
@@ -80,6 +81,9 @@ def main():
             c = BLOCK / math.sqrt(1 + p * p)
             h = c * p
 
+        # bve_alignment.txt: BVEParser 처럼 곡선 반회전 뒤의 진행방향(현 방향)으로 방위 기록
+        alignment.append(f'{s},{pos[0]},{pos[1]},{pos[2]},{math.atan2(d[1], d[0])},{r},{cant_at(s)},{p},0.0')
+
         visible = s < RAIL1_END
         x = rail1_offset(s) if visible else last_rail_x  # RailEnd 이후 마지막 오프셋 유지
         last_rail_x = x
@@ -91,7 +95,7 @@ def main():
         if a != 0.0:
             d = rotate(d, math.cos(-a), math.sin(-a))
 
-    for name, lines in (('bve_coordinates.txt', coords), ('curve_info.txt', curves),
+    for name, lines in (('bve_alignment.txt', alignment), ('bve_coordinates.txt', coords), ('curve_info.txt', curves),
                         ('pitch_info.txt', pitches), ('rail_info.txt', rails)):
         with open(os.path.join(OUT, name), 'w', encoding='utf-8', newline='\n') as f:
             f.write('\n'.join(lines) + '\n')

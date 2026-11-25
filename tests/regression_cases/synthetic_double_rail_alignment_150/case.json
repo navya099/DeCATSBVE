@@ -1,0 +1,9 @@
+{
+  "description": "합성 노선 복선 150km/h, 선형 입력을 bve_alignment.txt 하나로 (synthetic_double_rail_150 과 출력 동일해야 함)",
+  "alignment": "../synthetic_route/bve_alignment.txt",
+  "structure": "../synthetic_route/structure.xlsx",
+  "rail_info": "../synthetic_route/rail_info.txt",
+  "speed": 150, "mode": "double", "main_direction": "L", "track_distance": 4.4, "sub_rail": 1,
+  "start": 0, "end": 3000,
+  "verify": {"main_max_cm": 0.1, "sub_max_cm": 0.1}
+}
