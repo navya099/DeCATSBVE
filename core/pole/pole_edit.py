@@ -361,6 +361,44 @@ def move_pole(runner, pole, new_pos, alignment):
     # 앞뒤 전주와의 연결(next_pos·span 등)을 바로 맞춤 (전체 재계산 전에도 데이터가 일관되도록)
     from core.pole.pole_updator import PoleUpdator
     PoleUpdator.update_all(poles[max(0, idx - 1):idx + 2], al)
+    if prev_pole is not None and prev_pole.next_pos == pole.pos:
+        notices += filter(None, [span_limit_notice(runner, prev_pole.pos, pole.pos, '앞')])
+    if next_pole is not None and pole.next_pos == next_pole.pos:
+        notices += filter(None, [span_limit_notice(runner, pole.pos, next_pole.pos, '뒤')])
+    return notices
+
+
+def span_limit_notice(runner, start_pos, end_pos, label=''):
+    """경간이 설계 최대 경간(설계속도·곡선 반경·터널, 시작·끝 측점 중 엄격한 값)을 넘으면 안내 문구, 아니면 None.
+    경간표에 있는 경간이면 전선은 만들어지므로 거부하지 않고 알리기만 한다."""
+    from utils.comom_util import get_max_span_at
+    speed = getattr(runner, 'designspeed', None)
+    try:
+        limit = min(get_max_span_at(p, speed, runner.curvelist, runner.structure_list) for p in (start_pos, end_pos))
+    except ValueError:
+        return None  # 최대 경간 기준이 없는 설계속도
+    span = end_pos - start_pos
+    if span <= limit:
+        return None
+    return (f'{label + " " if label else ""}경간 {span:g}m 가 설계 최대 경간 {limit}m 를 넘습니다 '
+            f'(설계속도 {speed}km/h, 곡선 반경·터널 기준).')
+
+
+def delete_pole(runner, pole):
+    """전주 삭제. 앞뒤 전주가 이어지는 새 경간이 경간표에 있어야 함. 반환: 안내 문구 목록"""
+    poles, idx = _track_poles(runner, pole)
+    notices = []
+    if 0 < idx < len(poles) - 1:
+        prev_pole, next_pole = poles[idx - 1], poles[idx + 1]
+        new_span = next_pole.pos - prev_pole.pos
+        try:
+            runner.dataprocessor.get_contact_wire_span(new_span, prev_pole.structure)
+        except ValueError:
+            raise ValueError(f'{pole.post_number}: 삭제하면 {prev_pole.post_number}~{next_pole.post_number} '
+                             f'경간이 {new_span:g}m 가 되어 경간표에 없습니다.') from None
+        notices += filter(None, [span_limit_notice(runner, prev_pole.pos, next_pole.pos,
+                                                   f'{prev_pole.post_number}~{next_pole.post_number}')])
+    del poles[idx]
     return notices
 
 

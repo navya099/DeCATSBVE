@@ -46,9 +46,10 @@ class PoleProcessor:
                     nextside  = tunnel_direction
                 else:
                     nextside  = side
+                if nextside == -1:
+                    next_gauge *= -1  # 다음 전주 방향 기준 (토공→터널 등 방향이 바뀌는 경간)
                 if poleside == -1:
                     gauge *= -1
-                    next_gauge *= -1
                     current_type = 'I' if i % 2 == 1 else 'O'
                     next_type = 'O' if current_type == 'I' else 'I'
 

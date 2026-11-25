@@ -6,7 +6,8 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils.comom_util import get_max_span_straight, get_max_span_tunnel  # noqa: E402
+from utils.comom_util import (distribute_pole_spacing_flexible, get_max_span_at, get_max_span_straight,  # noqa: E402
+                              get_max_span_tunnel, get_span_from)
 from utils.math_util import (  # noqa: E402
     clear_geometry_caches,
     get_elevation_pos,
@@ -116,3 +117,27 @@ def test_bracket_lookup_error_names_missing_key_and_source():
         g.get_bracket_codes('일반개소', '토공', 'I')
     msg = str(e.value)
     assert "'I'" in msg and 'bracket.index.일반개소.토공' in msg and "['O']" in msg and 'x.json' in msg
+
+
+# 경간 상한: 측점 최대 경간 = min(설계속도 한도(직선/터널), 곡선 반경 한도)
+CURVES = [(sta, 1500, 0.05) for sta in range(1000, 1500, 25)] + [(sta, 300, 0.1) for sta in range(2000, 2500, 25)]
+STRUCT = {'bridge': [], 'tunnel': [('T1', 2200, 2600)]}
+
+
+@pytest.mark.parametrize("speed,pos,expected", [
+    (150, 500, 50), (250, 500, 60), (350, 500, 63),     # 직선: 설계속도 한도
+    (150, 1100, 50), (250, 1100, 60), (350, 1100, 60),  # R1500(60m): 저속은 설계속도 한도가 더 작음
+    (250, 2050, 35),                                    # R300 토공
+    (250, 2300, 35), (250, 2550, 45),                   # 터널 안 곡선은 반경 한도, 터널 직선은 터널 한도
+])
+def test_max_span_at(speed, pos, expected):
+    assert get_max_span_at(pos, speed, CURVES, STRUCT) == expected
+
+
+def test_span_from_respects_end_point_limit():
+    # 직선에서 출발해 60m 끝이 R300 곡선 안 → 35m (끝점도 한도 안)
+    assert get_span_from(1960, 250, CURVES, STRUCT) == 35
+    assert get_span_from(500, 250, CURVES, STRUCT) == 60
+    positions = distribute_pole_spacing_flexible(0, 3000, CURVES, STRUCT, 150)
+    for a, b in zip(positions, positions[1:]):
+        assert b - a <= min(get_max_span_at(p, 150, CURVES, STRUCT) for p in (a, b))

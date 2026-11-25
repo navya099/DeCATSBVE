@@ -23,42 +23,62 @@ def find_last_block(data):
     return last_block
 
 def get_max_span_by_radius(radius):
-    """곡선 반경(R)에 따른 설계상 최대 경간 제한 (KR CODE 기준 예시)"""
-    if radius == 0: return 60      # 직선 구간
-    if radius >= 1500: return 60
+    """곡선 반경(R)에 따른 최대 경간 (편위·풍압 기준, 설계속도와 무관). 직선(0)은 제한 없음 → 설계속도 한도 적용"""
+    radius = abs(radius)
+    if radius == 0 or radius >= 1500: return 60
     if radius >= 1000: return 55
     if radius >= 800: return 50
     if radius >= 600: return 45
     if radius >= 400: return 40
     return 35 # 급곡선
 
+
+def get_max_span_at(pos, design_speed, curvelist=None, structure_list=None):
+    """측점의 최대 경간 = min(설계속도 한도(직선 또는 터널), 곡선 반경 한도)
+
+    곡선 한도는 설계속도와 무관하므로, 저속에서 완만한 곡선 경간이 직선 경간보다 길어지지 않도록
+    설계속도 한도로 함께 제한한다. 터널 안 곡선도 반경 한도를 적용한다."""
+    from core.alignment.define_funtion import iscurve
+    from core.structure.define_structure import isbridge_tunnel
+    if isbridge_tunnel(pos, structure_list) == '터널':
+        limit = get_max_span_tunnel(design_speed)
+    else:
+        limit = get_max_span_straight(design_speed)
+    curve_type, r, _ = iscurve(pos, curvelist)
+    if curve_type == '곡선':
+        limit = min(limit, get_max_span_by_radius(r))
+    return limit
+
+
+def get_span_from(pos, design_speed, curvelist=None, structure_list=None):
+    """pos 에서 시작하는 경간 길이: 경간 시작점과 끝점 모두의 최대 경간을 넘지 않는 값
+    (직선에서 시작해 급곡선·터널 안에서 끝나는 경간이 직선 한도로 길어지지 않도록)"""
+    span = get_max_span_at(pos, design_speed, curvelist, structure_list)
+    while True:
+        end_limit = get_max_span_at(pos + span, design_speed, curvelist, structure_list)
+        if end_limit >= span:
+            return span
+        span = end_limit
+
+
 def distribute_pole_spacing_flexible(start_m, end_m, curvelist=None,structure_list=None, design_speed=0):
     """
-    45, 50, 55, 60m 범위에서 전주 간격을 균형 있게 배분하여 전체 구간을 채우는 함수
+    시작점부터 측점별 최대 경간(get_span_from)으로 전주를 배치.
     마지막 전주는 종점보다 약간 앞에 위치할 수도 있음.
 
     :param design_speed: 설계속도
     :param structure_list:
     :param curvelist:
-    :param start_m: 시작점 (km 단위)
-    :param end_m: 끝점 (km 단위)
-    :return: 전주 간격 리스트, 전주 위치 리스트
+    :param start_m: 시작점 (m)
+    :param end_m: 끝점 (m)
+    :return: 전주 위치 리스트
     """
     start_m = int(start_m)
     end_m = int(end_m)
     positions = [start_m]
     current_pos = start_m
-    from core.alignment.define_funtion import iscurve
-    from core.structure.define_structure import isbridge_tunnel
     while current_pos < end_m:
-        curve_type, r, c = iscurve(current_pos, curvelist)
-        structure = isbridge_tunnel(current_pos, structure_list)
-        if structure == '터널':
-            current_span = get_max_span_tunnel(design_speed)
-        elif curve_type == '곡선':
-            current_span = get_max_span_by_radius(abs(r))
-        else:
-            current_span = get_max_span_straight(design_speed)
+        current_span = get_span_from(current_pos, design_speed, curvelist, structure_list)
         if current_pos + current_span > end_m:
             break
         current_pos += current_span
