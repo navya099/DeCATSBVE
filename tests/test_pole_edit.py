@@ -215,3 +215,89 @@ def test_normalize_repairs_legacy_mast_offset(setup):
     normalize(runner)
     assert isinstance(pole.mast.offset, tuple) and pole.mast.offset[0] == pole.gauge
     assert pole_block(runner, pole) == complete
+
+
+# ── 전주 기본 속성 (표 셀 편집·배치도 이동) ───────────────────
+def test_rename(setup):
+    runner, poles, pole = setup
+    pe.rename(runner, pole, 'X-1')
+    assert pole.post_number == 'X-1'
+    with pytest.raises(ValueError):
+        pe.rename(runner, pole, poles[0].post_number)   # 중복
+    with pytest.raises(ValueError):
+        pe.rename(runner, pole, ' ')
+
+
+def test_move_keeps_component_edits_and_updates_geometry(setup):
+    runner, poles, pole = setup
+    al = alignment_for(runner, 'main')
+    pe.set_component(runner, pole, 'br:0', offset=(0.11, 0.22))   # 직접 편집
+    uid, coord, old = pole.uid, pole.coord, pole.pos
+    assert pe.move_pole(runner, pole, old + 2, al) == []
+    quiet_rebuild(runner)
+    assert pole.pos == old + 2 and pole.uid == uid and pole.coord != coord
+    assert pole.z == al.elevation(old + 2)
+    assert row(pole, 'br:0').offset == (0.11, 0.22)                  # 이전: 표 편집이 전주를 새로 만들어 사라짐
+    i = poles.index(pole)
+    assert poles[i - 1].span == pole.pos - poles[i - 1].pos and pole.span == poles[i + 1].pos - pole.pos
+
+
+def test_move_validation(setup):
+    runner, poles, pole = setup
+    al = alignment_for(runner, 'main')
+    i = poles.index(pole)
+    for bad in (poles[i - 1].pos, poles[i + 1].pos, poles[i - 1].pos - 5):
+        with pytest.raises(ValueError):
+            pe.move_pole(runner, pole, bad, al)
+    with pytest.raises(ValueError):                                   # 경간표에 없는 경간 (앞 경간 1m)
+        pe.move_pole(runner, pole, poles[i - 1].pos + 0.5, al)
+    aj = next(p for p in poles if p.section is not None)
+    with pytest.raises(ValueError):
+        pe.move_pole(runner, aj, aj.pos + 1, al)                      # 구간 전주
+    assert pole.pos == poles[i].pos                                    # 실패 시 그대로
+
+
+def test_move_across_structure_regenerates_for_new_structure():
+    """구조물 경계를 넘어 이동하면 새 구조물의 건식게이지로 구성품 재생성"""
+    from core.structure.define_structure import isbridge_tunnel
+    runner = run_case()
+    poles = runner.poledata['main']
+    al = alignment_for(runner, 'main')
+
+    def span_ok(span, structure):
+        try:
+            runner.dataprocessor.get_contact_wire_span(span, structure)
+            return True
+        except ValueError:
+            return False
+
+    found = None
+    for i in range(1, len(poles) - 1):
+        prev, pole, nxt = poles[i - 1], poles[i], poles[i + 1]
+        if pole.section is not None:
+            continue
+        for t in range(int(prev.pos) + 1, int(nxt.pos)):
+            s = isbridge_tunnel(t, runner.structure_list)
+            if s != pole.structure and span_ok(t - prev.pos, prev.structure) and span_ok(nxt.pos - t, s):
+                found = (pole, t, s)
+                break
+        if found:
+            break
+    assert found, '구조물 경계를 넘는 이동 위치가 있어야 함'
+    pole, target, structure = found
+    notices = pe.move_pole(runner, pole, target, al)
+    assert pole.structure == structure and notices
+    assert abs(pole.gauge) == runner.dataprocessor.get_pole_gauge(structure)
+    assert row(pole, 'mast').offset[0] == pytest.approx(pole.gauge)
+
+
+def test_set_base_type(setup):
+    runner, _, pole = setup
+    al = alignment_for(runner, 'main')
+    new = 'O' if pole.base_type == 'I' else 'I'
+    old_bracket = pole.brackets[0].index
+    assert pe.set_base_type(runner, pole, new.lower(), al)
+    assert pole.base_type == new and pole.brackets[0].index != old_bracket
+    assert pe.set_base_type(runner, pole, new, al) == []               # 그대로면 변경 없음
+    with pytest.raises(ValueError):
+        pe.set_base_type(runner, pole, 'Z', al)

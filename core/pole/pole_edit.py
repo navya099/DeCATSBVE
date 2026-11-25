@@ -282,3 +282,97 @@ def set_gauge(runner, pole, gauge, alignment):
         notices.append('장력장치 회전각은 게이지로 계산된 값이라 이전 값 그대로입니다. '
                        '정확히 맞추려면 "자동 구성으로 되돌리기"를 쓰세요.')
     return moved, notices
+
+
+# ── 전주 기본 속성 (표 셀 편집·배치도 이동) ───────────────────
+BASE_TYPES = ('I', 'O', 'F')
+
+
+def _track_poles(runner, pole):
+    poles = runner.poledata.get(pole.track, [])
+    idx = next((i for i, p in enumerate(poles) if p is pole), None)
+    if idx is None:
+        raise ValueError(f'{pole.post_number}: 전주 목록에 없는 전주입니다.')
+    return poles, idx
+
+
+def rename(runner, pole, post_number):
+    """전주번호 변경 (같은 트랙에서 중복 불가)"""
+    post_number = str(post_number).strip()
+    if not post_number:
+        raise ValueError('전주번호를 입력하세요.')
+    poles, _ = _track_poles(runner, pole)
+    if any(p is not pole and p.post_number == post_number for p in poles):
+        raise ValueError(f'같은 트랙에 전주번호 {post_number} 가 이미 있습니다.')
+    pole.post_number = post_number
+
+
+def _check_span(runner, span, structure, label):
+    try:
+        runner.dataprocessor.get_contact_wire_span(span, structure)
+    except ValueError:
+        raise ValueError(f'{label} 경간 {span:g}m 가 {structure} 경간표에 없습니다.') from None
+
+
+def move_pole(runner, pole, new_pos, alignment):
+    """전주 측점 이동. 앞뒤 전주 사이, 앞뒤 경간이 경간표에 있어야 함, 일반개소만.
+    좌표·고도·곡선·구배·구조물을 새 위치로 갱신하고 구성품 편집은 유지한다.
+    구조물(토공/교량/터널)이 바뀌면 그 구조물의 건식게이지로 구성품을 자동 재생성한다.
+    반환: 안내 문구 목록"""
+    from core.alignment.alignment import as_alignment
+    from core.alignment.define_funtion import iscurve, isslope
+    from core.structure.define_structure import isbridge_tunnel
+
+    new_pos = float(new_pos)
+    new_pos = int(new_pos) if new_pos.is_integer() else new_pos
+    if pole.section is not None:
+        raise ValueError(f'{pole.post_number}: {pole.section} 전주는 이동할 수 없습니다 (일반개소만 이동 가능).')
+    poles, idx = _track_poles(runner, pole)
+    prev_pole = poles[idx - 1] if idx > 0 else None
+    next_pole = poles[idx + 1] if idx + 1 < len(poles) else None
+    if prev_pole is not None and new_pos <= prev_pole.pos:
+        raise ValueError(f'앞 전주({prev_pole.post_number}, {prev_pole.pos}m)보다 뒤여야 합니다.')
+    if next_pole is not None and new_pos >= next_pole.pos:
+        raise ValueError(f'뒤 전주({next_pole.post_number}, {next_pole.pos}m)보다 앞이어야 합니다.')
+    al = as_alignment(alignment)
+    if not (al.start <= new_pos <= al.end):
+        raise ValueError(f'선형 범위({al.start:g}~{al.end:g}m) 밖입니다.')
+    new_structure = isbridge_tunnel(new_pos, runner.structure_list)
+    if prev_pole is not None and prev_pole.next_pos == pole.pos:
+        _check_span(runner, new_pos - prev_pole.pos, prev_pole.structure, '앞')
+    if next_pole is not None and pole.next_pos == next_pole.pos:
+        _check_span(runner, next_pole.pos - new_pos, new_structure, '뒤')
+
+    # 검증 통과 → 반영
+    notices = []
+    old_structure = pole.structure
+    pole.pos = new_pos
+    pole.structure = new_structure
+    _, pole.radius, pole.cant = iscurve(new_pos, runner.curvelist)
+    _, pole.pitch = isslope(new_pos, runner.pitchlist)
+    pole.z = al.elevation(new_pos)
+    if new_structure != old_structure:
+        sign = -1 if pole.gauge < 0 else 1
+        pole.gauge = runner.dataprocessor.get_pole_gauge(new_structure) * sign
+        regenerate(runner, pole, al)
+        notices.append(f'구조물이 {old_structure} → {new_structure} 로 바뀌어 건식게이지({pole.gauge})와 '
+                       '구성품을 자동으로 다시 만들었습니다.')
+    pole.coord = al.offset_point(new_pos, pole.gauge)
+    # 앞뒤 전주와의 연결(next_pos·span 등)을 바로 맞춤 (전체 재계산 전에도 데이터가 일관되도록)
+    from core.pole.pole_updator import PoleUpdator
+    PoleUpdator.update_all(poles[max(0, idx - 1):idx + 2], al)
+    return notices
+
+
+def set_base_type(runner, pole, base_type, alignment):
+    """기본 타입(I/O/F) 변경 — 브래킷이 기본 타입으로 정해지므로 구성품을 자동 재생성"""
+    base_type = str(base_type).strip().upper()
+    if base_type not in BASE_TYPES:
+        raise ValueError(f'기본 타입은 {", ".join(BASE_TYPES)} 중 하나입니다.')
+    if pole.section is not None:
+        raise ValueError(f'{pole.post_number}: {pole.section} 전주의 기본 타입은 바꿀 수 없습니다.')
+    if base_type == pole.base_type:
+        return []
+    pole.base_type = base_type
+    regenerate(runner, pole, alignment)
+    return ['기본 타입이 바뀌어 구성품을 자동으로 다시 만들었습니다 (직접 편집한 구성품은 사라짐).']

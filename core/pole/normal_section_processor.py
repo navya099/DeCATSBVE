@@ -1,7 +1,5 @@
 from core.equipment.equipment_data import EquipmentDATA
-from core.mast.base.mast_base import MastBase
 from core.mast.mast_builder import MASTBuilder
-from core.mast.mastdata import Mast
 from core.pole.curve_section_processor import CurveSectionProcessor
 from core.pole.poledata import PoleDATA
 from core.pole.straight_section_processor import StraightSectionProcessor
@@ -27,10 +25,8 @@ class NormalSectionProcessor:
 
         #브래킷 빌더 호출
         if pole.radius == 0:
-            current_curve = '직선'
             StraightSectionProcessor.process(pole, dataprocessor, idxlib, rotation, stagger_flip=flip)
         else:
-            current_curve ='곡선'
             CurveSectionProcessor.process(pole, dataprocessor, idxlib, rotation)
 
 

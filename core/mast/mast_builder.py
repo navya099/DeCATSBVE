@@ -1,6 +1,5 @@
 from core.mast.base.mast_base import MastBase
 from core.mast.mast_accessory.accessory_builder import AccessoryBuilder
-from core.mast.mast_accessory.mast_accessory import MastAccessory
 from core.mast.mastdata import Mast
 from core.pole.poledata import PoleDATA
 from dataset.dataset_getter import DatasetGetter

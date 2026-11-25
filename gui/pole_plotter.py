@@ -4,17 +4,16 @@ import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib.backends._backend_tk import NavigationToolbar2Tk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from tkinter import ttk, messagebox
+from tkinter import messagebox
 
 from matplotlib.collections import LineCollection
 
 from core.model_rebuilder import alignment_for, rebuild
 from event.events import MODEL_CHANGED, POLE_SELECTED, POLES_SELECTED
-from core.alignment.alignment import as_alignment
+from core.pole import pole_edit
 from xref_module.dxf_controller.dxf_controller import DXFController
 from xref_module.preview.preview_sevice import PreviewService
 from xref_module.preview.preview_viewer import PreviewViewer
-from xref_module.transaction import Transaction
 
 
 class PlotPoleMap(tk.Frame):
@@ -229,55 +228,20 @@ class PlotPoleMap(tk.Frame):
         self._move_pole(+1)
 
     def _move_pole(self, delta):
+        """선택 전주를 delta(m) 만큼 이동 (검증 후에만 반영, 구성품·전선 편집 유지)"""
         if not self.selected_epole:
             return
-
-        new_pos = self.selected_epole.pole.pos + delta
-        prev_pos = self.selected_epole.prev_pole.pole.pos if self.selected_epole.prev_pole is not None else None
-        next_pos = self.selected_epole.next_pole.pole.pos if self.selected_epole.next_pole is not None else None
-
-        # 범위 검사
-        if prev_pos and new_pos <= prev_pos:
+        pole = self.selected_epole.pole
+        try:
+            notices = pole_edit.move_pole(self.runner, pole, pole.pos + delta, alignment_for(self.runner, pole.track))
+        except ValueError as e:
+            messagebox.showerror('전주 이동', f'{pole.post_number}: {e}')
             return
-        if next_pos and new_pos >= next_pos:
-            return
-
-        # 타입 검사
-        if self.selected_epole.pole.section is not None:
-            messagebox.showerror('오류', f'{self.selected_epole.pole.post_number}: 지정한 전주는 일반개소가 아닙니다. 일반개소만 이동이 가능합니다.')
-            return
-
-        # span 검사
-        span_data = self.runner.dataprocessor.dataset['span_data']
-        valid_spans = set()
-        for values in span_data.values():
-            valid_spans.update(values.keys())
-
-
-        new_prev_pole_span = new_pos - prev_pos if prev_pos is not None else None
-        new_span = next_pos - new_pos if next_pos is not None else None
-
-        if (new_prev_pole_span and new_prev_pole_span not in valid_spans) or \
-                (new_span and new_span not in valid_spans):
-            messagebox.showerror('오류', f'{self.selected_epole.pole.post_number}: 지정한 전주는 span 범위에 없습니다.')
-            return
-
-        # 본선/상선 선형으로 보간 좌표 계산
-        alignment = as_alignment(alignment_for(self.runner, self.selected_epole.pole.track))
-        pos_coord_with_offset = alignment.offset_point(new_pos, self.selected_epole.pole.gauge)
-
-        # 최종 반영
-        with Transaction(
-                self.selected_epole.pole,
-                self.selected_epole.prev_pole.pole if self.selected_epole.prev_pole is not None else None,
-                self.selected_epole.next_pole.pole if self.selected_epole.next_pole is not None else None
-        ):
-            self.selected_epole.update(pos=new_pos)
-
-        self.selected_epole.pole.coord = pos_coord_with_offset
-        self.selected_pole = self.selected_epole.pole
+        self.selected_pole = pole
         rebuild(self.runner)
-        self.runner.log(f"전주 {self.selected_epole.pole.post_number} 이동 완료: {new_pos}")
+        self.runner.log(f"전주 {pole.post_number} 이동 완료: {pole.pos}")
+        for notice in notices:
+            self.runner.log(notice)
         if self.events:
             self.events.emit(MODEL_CHANGED)
         else:

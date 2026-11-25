@@ -1,8 +1,6 @@
-from core.alignment.define_funtion import iscurve
 from core.wire.aj_wire_processor import AirjointWireProcessor
 from core.wire.as_wire_processor import AirSectionWireProcessor
 from enums.section_type import SectionType
-from utils.math_util import calculate_curve_stagger, change_permile_to_degree
 
 
 class WireSectionHandler:

@@ -14,7 +14,6 @@ import pandas as pd
 #  아래 import들은 원본 프로젝트 구조에 맞게 유지
 # ──────────────────────────────────────────────
 from bve.bvecsv import BVECSV
-from core.base_runner import BaseRunner
 from core.manual_pole_runner import ManualRunner
 from core.runner import AutoRunner
 from dataset.dataset_getter import DatasetGetter
@@ -534,11 +533,11 @@ class AutoPoleApp(tk.Tk):
             if self.gen_mode.get() == 'auto':
                 self.runner = AutoRunner()
                 self.runner.log_widget = self.log_box
-                self.runner.log(f"현재 모드: 자동 배치모드")
+                self.runner.log("현재 모드: 자동 배치모드")
             else:
                 self.runner = ManualRunner()
                 self.runner.log_widget = self.log_box
-                self.runner.log(f"현재 모드: 수동 배치모드")
+                self.runner.log("현재 모드: 수동 배치모드")
             self.runner.designspeed = int(self.entry_speed_var.get())
             self.runner.iscustommode = int(self.is_custom_mode.get())
             self.runner.custom_dataset_json = self.custom_dataset_json
@@ -675,7 +674,7 @@ class AutoPoleApp(tk.Tk):
 
                     write_to_file(self.runner.pole_path_sub, s)
                     write_to_file(self.runner.wire_path_sub, s2)
-                self.runner.log(f"txt 저장 성공!")
+                self.runner.log("txt 저장 성공!")
                 self._set_status("CSV 저장 완료", "success")
                 self.log_append(f"✅ CSV 저장 완료 → {main_path}", "SUCCESS")
             else:

@@ -27,7 +27,7 @@ class AirSectionBracketAdder:
             else:
                 NormalSectionProcessor.process(pole, self.prosc, self.idxlib)
             f_start_coord = self.prosc.get_airsection_offset('F형_시점')
-            x1, y1 = f_start_coord['x'], f_start_coord['y']
+            x1 = f_start_coord['x']
             if pole.side == -1:
                 x1 *= -1
             start_angle = as_alignment(polyline_with_sta).wire_angle(pole.pos, pole.next_pos, pole.gauge, x1)
@@ -91,7 +91,7 @@ class AirSectionBracketAdder:
             self.add_f_and_as_brackets(pole, f_x, f_y, as_x, as_y, end=True)
 
             f_start_coord = self.prosc.get_airsection_offset('F형_시점')
-            x1, y1 = f_start_coord['x'], f_start_coord['y']
+            x1 = f_start_coord['x']
             if pole.side == -1:
                 x1 *= -1
             start_angle = as_alignment(polyline_with_sta).wire_angle(pole.pos, pole.next_pos, pole.gauge, x1)
@@ -110,7 +110,7 @@ class AirSectionBracketAdder:
                 TunnelSectionProcessor.process(pole, self.prosc, self.idxlib)
             else:
                 NormalSectionProcessor.process(pole, self.prosc, self.idxlib)
-            x5, y5 = self.prosc.get_airsection_offset('F형_끝').get('x'), self.prosc.get_airsection_offset('F형_끝').get('y')
+            x5 = self.prosc.get_airsection_offset('F형_끝').get('x')
             if pole.side == 1:
                 x5 *= -1
             end_angle = as_alignment(polyline_with_sta).wire_angle(pole.pos, pole.next_pos, x5, pole.next_gauge)
@@ -137,8 +137,7 @@ class AirSectionBracketAdder:
             self.add_f_and_as_brackets(pole, f_x, f_y, as_x, as_y, end=False)
 
             en = self.idxlib.get_name(682)
-            x5, y5 = self.prosc.get_airsection_offset('F형_끝').get('x'), self.prosc.get_airsection_offset('F형_끝').get(
-                'y')
+            x5 = self.prosc.get_airsection_offset('F형_끝').get('x')
             if pole.side == -1:
                 x5 *= -1
             end_angle = as_alignment(polyline_with_sta).wire_angle(pole.pos, pole.next_pos, x5, pole.next_gauge)
@@ -175,8 +174,7 @@ class AirSectionBracketAdder:
                 TunnelSectionProcessor.process(pole, self.prosc, self.idxlib)
             else:
                 NormalSectionProcessor.process(pole, self.prosc, self.idxlib)
-            x5, y5 = self.prosc.get_airsection_offset('F형_끝').get('x'), self.prosc.get_airsection_offset('F형_끝').get(
-                'y')
+            x5 = self.prosc.get_airsection_offset('F형_끝').get('x')
             if pole.side == 1:
                 x5 *= -1
             end_angle = as_alignment(polyline_with_sta).wire_angle(pole.pos, pole.next_pos, x5, pole.next_gauge)
@@ -189,8 +187,8 @@ class AirSectionBracketAdder:
 
     def add_f_and_as_brackets(self, pole, f_x, f_y, as_x, as_y, end=False):
         """F형 및 AJ형 브래킷을 추가하는 공통 함수"""
-        f_i, f_o = self.params.f_bracket_valuse['I'], self.params.f_bracket_valuse['O']
-        aj_i, aj_o = self.params.aj_bracket_values['I'], self.params.aj_bracket_values['O']
+        f_o = self.params.f_bracket_valuse['O']
+        aj_i = self.params.aj_bracket_values['I']
         pole.brackets.clear()
         if not end:
             self.add_f_bracket(pole, f_o, f_x, f_y)
@@ -211,7 +209,6 @@ class AirSectionBracketAdder:
         n2 = self.idxlib.get_name(idx2)
 
         #곡선당김금구 F
-        f_list = self.params.steady_arm_fitting.get('F', None)
         idx3 = (self.params.steady_arm_fitting.get('F') or {}).get('R')
 
         n3 = self.idxlib.get_name(idx3)
@@ -263,7 +260,6 @@ class AirSectionBracketAdder:
 
         bn = self.idxlib.get_name(bracket_code)
         # 브래킷 인상 높이
-        h = self.params.f_bracket_height
         # 브래킷 추가
         bracket = BracketDATA(
             bracket_type='AJ',

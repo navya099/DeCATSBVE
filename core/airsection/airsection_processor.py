@@ -1,9 +1,6 @@
 
 from core.airjoint.aj_data_context import AirjointDataContext
 from core.airsection.as_bracket_adder import AirSectionBracketAdder
-from core.equipment.equipment_data import EquipmentDATA
-from core.pole.normal_section_processor import NormalSectionProcessor
-from core.pole.tunnel_section_processor import TunnelSectionProcessor
 from dataset.dataset_getter import DatasetGetter
 from enums.section_type import SectionType
 

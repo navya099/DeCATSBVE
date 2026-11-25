@@ -3,7 +3,6 @@ from core.bracket.bracket_data import BracketDATA
 from core.bracket.fitting_data import FittingDATA
 from core.equipment.equipment_data import EquipmentDATA
 from core.mast.mast_builder import MASTBuilder
-from core.mast.mastdata import Mast
 from core.pole.normal_section_processor import NormalSectionProcessor
 from core.pole.poledata import PoleDATA
 from core.pole.tunnel_section_processor import TunnelSectionProcessor
@@ -26,7 +25,7 @@ class AirjointBracketAdder:
             else:
                 NormalSectionProcessor.process(pole, self.prosc, self.idxlib)
             f_start_coord = self.prosc.get_airjoint_offset('F형_시점')
-            x1, y1 = f_start_coord['x'], f_start_coord['y']
+            x1 = f_start_coord['x']
             if pole.side == -1:
                 x1 *= -1
             start_angle = as_alignment(polyline_with_sta).wire_angle(pole.pos, pole.next_pos, pole.gauge, x1)
@@ -58,7 +57,7 @@ class AirjointBracketAdder:
                 TunnelSectionProcessor.process(pole, self.prosc, self.idxlib)
             else:
                 NormalSectionProcessor.process(pole, self.prosc, self.idxlib)
-            x5, y5 = self.prosc.get_airjoint_offset('F형_끝').get('x'), self.prosc.get_airjoint_offset('F형_끝').get('y')
+            x5 = self.prosc.get_airjoint_offset('F형_끝').get('x')
             if pole.side == 1:
                 x5 *= -1
             end_angle = as_alignment(polyline_with_sta).wire_angle(pole.pos, pole.next_pos, x5, pole.next_gauge)
@@ -114,7 +113,6 @@ class AirjointBracketAdder:
         n2 = self.idxlib.get_name(idx2)
 
         #곡선당김금구 F
-        f_list = self.params.steady_arm_fitting.get('F', None)
         idx3 = (self.params.steady_arm_fitting.get('F') or {}).get('R')
 
         n3 = self.idxlib.get_name(idx3)
@@ -166,7 +164,6 @@ class AirjointBracketAdder:
 
         bn = self.idxlib.get_name(bracket_code)
         # 브래킷 인상 높이
-        h = self.params.f_bracket_height
         # 브래킷 추가
         bracket = BracketDATA(
             bracket_type='AJ',

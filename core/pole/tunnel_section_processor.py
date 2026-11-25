@@ -1,8 +1,5 @@
-from core.bracket.bracket_data import BracketDATA
-from core.bracket.helper_bracket_create import BracketCreator
 from core.equipment.equipment_data import EquipmentDATA
 from core.mast.mast_builder import MASTBuilder
-from core.mast.mastdata import Mast
 from core.pole.curve_section_processor import CurveSectionProcessor
 from core.pole.straight_section_processor import StraightSectionProcessor
 from dataset.dataset_getter import DatasetGetter
@@ -27,7 +24,6 @@ class TunnelSectionProcessor:
         feeder_idx = dataprocessor.get_feeder_insulator_idx(pole.structure)
         feeder_name = idxlib.get_name(feeder_idx)
 
-        current_curve = '직선' if pole.radius == 0 else '곡선'
         if pole.radius == 0:
             StraightSectionProcessor.process(pole, dataprocessor, idxlib, bracket_rotation, stagger_flip=stagger_flip)
         else:

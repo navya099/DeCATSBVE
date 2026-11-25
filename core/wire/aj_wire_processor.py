@@ -7,6 +7,11 @@ class AirjointWireProcessor:
         self.datap = datap
         self.al = al
 
+    def _offset(self, name):
+        """데이터셋 오프셋 (x, y)"""
+        value = self.datap.get_airjoint_offset(name)
+        return value.get('x'), value.get('y')
+
     def run(self, pole, next_pole, wire, pitch_angle ,offset, cw_index):
         # 에어조인트 구간 처리
         # 전차선 정보 가져오기,
@@ -14,12 +19,12 @@ class AirjointWireProcessor:
         imw_index = self.datap.get_inactive_mw_span(pole.span - 7)
         icw_index = self.datap.get_inactive_cw_span(pole.span - 7)
         # 평행구간 전차선 오프셋
-        aj_start_x, aj_start_y = self.datap.get_airjoint_offset('AJ형_시점').get('x'),self.datap.get_airjoint_offset('AJ형_시점').get('y')
-        f_start_x, f_start_y = self.datap.get_airjoint_offset('F형_시점').get('x'), self.datap.get_airjoint_offset('F형_시점').get('y')
-        aj_middle1_x, aj_middle1_y = self.datap.get_airjoint_offset('AJ형_중간1').get('x') , self.datap.get_airjoint_offset('AJ형_중간1').get('y')
-        aj_middle2_x, aj_middle2_y = self.datap.get_airjoint_offset('AJ형_중간2').get('x'), self.datap.get_airjoint_offset('AJ형_중간2').get('y')
-        aj_end_x, aj_end_y = self.datap.get_airjoint_offset('AJ형_끝').get('x'), self.datap.get_airjoint_offset('AJ형_끝').get('y')
-        f_end_x, f_end_y = self.datap.get_airjoint_offset('F형_끝').get('x'), self.datap.get_airjoint_offset('F형_끝').get('y')
+        aj_start_x, _ = self._offset('AJ형_시점')
+        f_start_x, f_start_y = self._offset('F형_시점')
+        aj_middle1_x, _ = self._offset('AJ형_중간1')
+        aj_middle2_x, _ = self._offset('AJ형_중간2')
+        aj_end_x, _ = self._offset('AJ형_끝')
+        f_end_x, _ = self._offset('F형_끝')
 
         # 방향(side) + 터널 여부에 따라 X 좌표 반전
 

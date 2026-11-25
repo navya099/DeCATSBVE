@@ -1,4 +1,3 @@
-from utils.comom_util import offsets
 from enums.section_type import SectionType
 from enums.section_type import section_label as section_label_of
 
@@ -154,7 +153,6 @@ class BVECSV:
             try:
                 pos = pole.pos
                 post_number = pole.post_number
-                section = pole.section
                 structure = pole.structure
                 curve = '직선' if pole.radius == 0.0 else '곡선'
                 section_label = section_label_of(pole)
@@ -176,5 +174,5 @@ class BVECSV:
             except Exception as e:
                 print(f"예상치 못한 오류: index {pos}, 오류: {e}")
 
-        print(f'create_wire_csv실행이 완료됐습니다.')
+        print('create_wire_csv실행이 완료됐습니다.')
         return self.lines
