@@ -3,7 +3,7 @@ from core.pole.normal_section_processor import NormalSectionProcessor
 from core.pole.poledata import PoleDATA
 from core.structure.define_structure import isbridge_tunnel
 from enums.section_type import SectionType
-from utils.math_util import get_elevation_pos, interpolate_cached, calculate_offset_point
+from core.alignment.alignment import as_alignment
 
 
 class ManualPoleProcessor:
@@ -26,11 +26,11 @@ class ManualPoleProcessor:
             PoleDATA
         """
 
-        z = get_elevation_pos(pos, alignment)
+        alignment = as_alignment(alignment)
+        z = alignment.elevation(pos)
         current_curve, R, c = iscurve(pos, curvelist)
         current_slope, pitch = isslope(pos, pitchlist)
-        coord, _, v1 = interpolate_cached(alignment, pos)
-        pos_coord_with_offset = calculate_offset_point(v1, coord, gauge)
+        pos_coord_with_offset = alignment.offset_point(pos, gauge)
         current_structure = isbridge_tunnel(pos, structure_list)
         # PoleDATA 객체 생성
         pole = PoleDATA(

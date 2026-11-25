@@ -1,6 +1,6 @@
 from core.alignment.define_funtion import iscurve, isslope
 from core.structure.define_structure import isbridge_tunnel
-from utils.math_util import interpolate_cached, calculate_offset_point, get_elevation_pos
+from core.alignment.alignment import as_alignment
 
 
 class EditablePole:
@@ -37,13 +37,12 @@ class EditablePole:
         # span 갱신
         self.pole.span = self.pole.next_pos - self.pole.pos
         #좌표갱신
-        coord, _, v1 = interpolate_cached(self.polyline_with_sta, self.pole.pos)
-        pos_coord_with_offset = calculate_offset_point(v1, coord, self.pole.gauge)
-        self.pole.coord = pos_coord_with_offset
+        alignment = as_alignment(self.polyline_with_sta)
+        self.pole.coord = alignment.offset_point(self.pole.pos, self.pole.gauge)
 
         # z, next_z 갱신
-        self.pole.z = get_elevation_pos(self.pole.pos, self.polyline_with_sta)
-        self.pole.next_z = get_elevation_pos(self.pole.next_pos, self.polyline_with_sta)
+        self.pole.z = alignment.elevation(self.pole.pos)
+        self.pole.next_z = alignment.elevation(self.pole.next_pos)
 
         # 구조물, 곡선, 구배 등 갱신
         self.pole.structure = isbridge_tunnel(self.pole.pos, self.structure_list)

@@ -36,6 +36,36 @@ def normalize(runner):
             _repair_mast_offset(runner, pole)
     if not hasattr(runner, 'wire_overrides') or runner.wire_overrides is None:
         runner.wire_overrides = {}
+    _normalize_alignments(runner)
+
+
+def _normalize_alignments(runner):
+    """구버전 .dat: 선형이 [(측점, x, y, z)] 리스트로 저장된 경우 Alignment 로 변환 (본선·상선·트랙별 사전이 같은 객체 유지)"""
+    from core.alignment.alignment import Alignment
+    main = getattr(runner, 'polyline_with_sta', None)
+    if main is None:
+        return
+    converted = {}
+
+    def convert(points):
+        if points is None or isinstance(points, Alignment):
+            return points
+        if id(points) not in converted:
+            if isinstance(main, Alignment) and points is not main:
+                converted[id(points)] = main.derived(points)   # 상선: 본선 곡선·구배 공유
+            else:
+                converted[id(points)] = Alignment.from_points(points, getattr(runner, 'curvelist', None),
+                                                              getattr(runner, 'pitchlist', None))
+        return converted[id(points)]
+
+    runner.polyline_with_sta = main = convert(main)
+    runner.offset_line_with_25 = convert(getattr(runner, 'offset_line_with_25', None))
+    by_track = getattr(runner, 'alignment_by_track', None)
+    if by_track:
+        for track, points in list(by_track.items()):
+            by_track[track] = convert(points)
+    if getattr(runner, 'alignment', None) is None:
+        runner.alignment = main
 
 
 def _repair_mast_offset(runner, pole):

@@ -5,7 +5,6 @@ from core.equipment.equipment_data import EquipmentDATA
 from core.pole.normal_section_processor import NormalSectionProcessor
 from core.pole.tunnel_section_processor import TunnelSectionProcessor
 from dataset.dataset_getter import DatasetGetter
-from utils.math_util import calculate_curve_angle
 from enums.section_type import SectionType
 
 
