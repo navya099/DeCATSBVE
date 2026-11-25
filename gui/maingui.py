@@ -188,6 +188,9 @@ class AutoPoleApp(tk.Tk):
         self.tunnel_direction = {'main': None, 'sub': None}
         self.db = None
         self.dataset = None
+        # 커스텀 모드 전용 데이터셋 경로 (표준 데이터셋은 항상 소스 폴더 config/ 사용)
+        self.custom_dataset_json = None
+        self.custom_spandata = None
         self.idxlib = None
         self.runner = None   # BaseRunner | None
 
@@ -314,6 +317,7 @@ class AutoPoleApp(tk.Tk):
         row2.pack(fill="x", pady=2)
         make_check(row2, "커스텀 모드", self.is_custom_mode).pack(side="left", padx=(0, 8))
         make_check(row2, "도면 작성 (DXF)", self.is_create_dxf).pack(side="left")
+        make_button(c_body2, "커스텀 데이터셋 지정", self.select_custom_dataset).pack(fill="x", pady=(4, 0))
 
         # ── 트랙 설정 ──
         c_outer3, c_body3 = card(sidebar, "🛤️ 트랙 설정")
@@ -371,7 +375,7 @@ class AutoPoleApp(tk.Tk):
         util_buttons = [
             ("러너 갱신",        self.update_runner_tracks, "normal"),
             ("라이브러리 갱신",  self.refresh_library,      "normal"),
-            ("데이터셋 불러오기", self.load_dataset,         "normal"),
+            ("데이터셋 불러오기", self.on_load_dataset,      "normal"),
             ("데이터셋 편집",    self.edit_dataset,          "normal"),
             ("로그 클리어",      self.clear_log,             "warning"),
         ]
@@ -536,6 +540,8 @@ class AutoPoleApp(tk.Tk):
                 self.runner.log(f"현재 모드: 수동 배치모드")
             self.runner.designspeed = int(self.entry_speed_var.get())
             self.runner.iscustommode = int(self.is_custom_mode.get())
+            self.runner.custom_dataset_json = self.custom_dataset_json
+            self.runner.custom_spandata = self.custom_spandata
             self.runner.is_create_dxf = int(self.is_create_dxf.get())
             self.runner.idxlib = self.idxlib
             self.runner.track_mode = self.track_mode.get()
@@ -711,6 +717,9 @@ class AutoPoleApp(tk.Tk):
                                 f"사용자정의 모드 {'ON' if runner.iscustommode else 'OFF'}", "WARN")
             self.entry_speed_var.set(runner.designspeed)
             self.is_custom_mode.set(bool(runner.iscustommode))
+            # 저장 당시 커스텀 데이터셋 경로 복원 (구버전 .dat 에는 없음)
+            self.custom_dataset_json = getattr(runner, 'custom_dataset_json', None) or self.custom_dataset_json
+            self.custom_spandata = getattr(runner, 'custom_spandata', None) or self.custom_spandata
             self.refresh_library()
             self.load_dataset()
             self.runner.polesaver_main = BVECSV(self.runner.poledata["main"], self.runner.wire_data["main"], 0)
@@ -734,12 +743,45 @@ class AutoPoleApp(tk.Tk):
         self.log_append("📂 데이터 로드 완료", "SUCCESS")
         self._set_status("로드 완료")
 
+    def select_custom_dataset(self):
+        """커스텀 모드용 데이터셋 JSON / spandata xlsx 지정. 둘 다 선택해야 반영"""
+        json_path = askopenfilename(title='커스텀 데이터셋 JSON 선택',
+                                    filetypes=[("JSON files", "*.json *.JSON"), ("All files", "*.*")])
+        if not json_path:
+            return False
+        xlsx_path = askopenfilename(title='커스텀 경간(spandata) xlsx 선택',
+                                    filetypes=[("XLSX files", "*.xlsx"), ("All files", "*.*")])
+        if not xlsx_path:
+            return False
+        self.custom_dataset_json, self.custom_spandata = json_path, xlsx_path
+        if self.runner:
+            self.runner.custom_dataset_json, self.runner.custom_spandata = json_path, xlsx_path
+        self.log_append(f"커스텀 데이터셋 지정: {json_path} / {xlsx_path}", "INFO")
+        return True
+
     def load_dataset(self):
-        self.dataset = load_dataset(int(self.entry_speed_var.get()), int(self.is_custom_mode.get()))
+        """데이터셋 로드. 표준: 소스 폴더 config/, 커스텀: 사용자가 지정한 경로. 실패 시 예외"""
+        custom = bool(self.is_custom_mode.get())
+        if custom and not (self.custom_dataset_json and self.custom_spandata):
+            if not self.select_custom_dataset():
+                raise ValueError('커스텀 모드입니다. 커스텀 데이터셋 JSON 과 spandata xlsx 를 지정하세요.')
+        self.dataset = load_dataset(int(self.entry_speed_var.get()), custom,
+                                    self.custom_dataset_json, self.custom_spandata)
         self.db = DatasetGetter(self.dataset)
         if self.runner:
             self.runner.dataprocessor = self.db
-        self.log_append(f"데이터셋 로드됨: {self.dataset.get('_source', {}).get('json')}", "INFO")
+        mode = '커스텀' if custom else '표준'
+        self.log_append(f"데이터셋 로드됨({mode}): {self.dataset['_source']['json']}", "INFO")
+
+    def on_load_dataset(self):
+        """'데이터셋 불러오기' 버튼"""
+        try:
+            self.load_dataset()
+            self._set_status("데이터셋 로드 완료")
+        except Exception as e:
+            messagebox.showerror('데이터셋 오류', str(e))
+            self._set_status("데이터셋 오류", "error")
+            self.log_append(f"❌ {e}", "ERROR")
 
     def edit_dataset(self):
         if self.dataset is None:

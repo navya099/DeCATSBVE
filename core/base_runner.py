@@ -38,6 +38,8 @@ class BaseRunner:
         self.dataprocessor = None
         self.designspeed = 0
         self.iscustommode = False
+        self.custom_dataset_json = None   # 커스텀 모드 데이터셋 경로 (표준은 config/ 고정)
+        self.custom_spandata = None
         self.is_create_dxf = False
         self.track_mode = None
         self.track_direction: dict[str, int | None] = {'main': None, 'sub': None}
