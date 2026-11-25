@@ -78,3 +78,12 @@ python -m pytest tests
 
 2. 신뢰할 수 있는 코드(예: 현재 `main`)에서 `python -m tools.regression record <폴더>` 로 기준 출력 기록
 3. 이후 변경마다 `python -m tools.regression check <폴더>` 또는 pytest 로 확인
+
+## 4. GUI 스모크 테스트 — `tools/gui_smoke.py`
+
+실제 Tk 앱을 띄워 편집 동작(전주 이동·삭제, 에어조인트 추가·제거, 흐름방지 추가·삭제, 상선 편집)을 실행하고,
+단계마다 테이블·배치도·전선·흐름방지가 서로 일치하는지 검사합니다. 창이 잠깐 열렸다 닫힙니다.
+
+```bash
+python -m tools.gui_smoke tests/regression_cases/synthetic_double_rail_150/case.json
+```
