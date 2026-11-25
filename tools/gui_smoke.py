@@ -346,7 +346,6 @@ if (len(app.events._listeners.get(WIRE_SELECTED, [])) != n_wire_listeners
     failures.append('전선 편집기를 닫아도 이벤트 구독이 남음')
 
 # 7) 전주 상세 편집기: 구성품 수정·추가·삭제 → 건식게이지 변경(편집 유지) → 자동 구성 → 선택 따라감 → 닫기
-from core.pole import pole_edit  # noqa: E402
 from event.events import POLE_SELECTED  # noqa: E402
 p = normal_pole('main', 7)
 select('main', p.pos)
