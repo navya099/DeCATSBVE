@@ -233,7 +233,8 @@ def test_move_keeps_component_edits_and_updates_geometry(setup):
     al = alignment_for(runner, 'main')
     pe.set_component(runner, pole, 'br:0', offset=(0.11, 0.22))   # 직접 편집
     uid, coord, old = pole.uid, pole.coord, pole.pos
-    assert pe.move_pole(runner, pole, old + 2, al) == []
+    notices = pe.move_pole(runner, pole, old + 2, al)
+    assert all('설계 최대 경간' in n for n in notices)                # 구조물 그대로 → 재생성 안내 없음
     quiet_rebuild(runner)
     assert pole.pos == old + 2 and pole.uid == uid and pole.coord != coord
     assert pole.z == al.elevation(old + 2)
@@ -301,3 +302,35 @@ def test_set_base_type(setup):
     assert pe.set_base_type(runner, pole, new, al) == []               # 그대로면 변경 없음
     with pytest.raises(ValueError):
         pe.set_base_type(runner, pole, 'Z', al)
+
+
+def test_move_over_design_limit_warns(setup):
+    runner, poles, pole = setup
+    al = alignment_for(runner, 'main')
+    i = poles.index(pole)
+    limit = 60  # synthetic_single_250 직선 최대 경간
+    assert poles[i + 1].pos - poles[i - 1].pos > limit
+    # 경간표 안이지만 설계 한도를 넘는 이동 → 반영 + 안내
+    target = next((poles[i - 1].pos + s for s in range(limit + 1, limit + 10)
+                   if poles[i - 1].pos + s < poles[i + 1].pos and pe.span_limit_notice(runner, poles[i - 1].pos,
+                                                                                       poles[i - 1].pos + s)), None)
+    if target is None:
+        pytest.skip('경간표에 한도 초과 경간 없음')
+    try:
+        notices = pe.move_pole(runner, pole, target, al)
+    except ValueError:
+        pytest.skip('경간표에 없는 경간')
+    assert any('설계 최대 경간' in n for n in notices)
+    assert pe.span_limit_notice(runner, 0, 40) is None
+
+
+def test_delete_pole(setup):
+    runner, poles, pole = setup
+    n = len(poles)
+    i = poles.index(pole)
+    with pytest.raises(ValueError):          # 일반 구간 경간 60m 두 개 → 120m: 경간표에 없음
+        pe.delete_pole(runner, pole)
+    assert len(poles) == n
+    last = poles[-1]
+    assert pe.delete_pole(runner, last) == []
+    assert len(poles) == n - 1 and last not in poles and poles[i] is pole

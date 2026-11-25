@@ -424,24 +424,19 @@ class AutoPoleEditor(tk.Frame):
             values = tree.item(selected_item[0], "values")
             post_number = values[0]
 
-            # 삭제 후 앞뒤 전주가 이어지는 경간이 전선 경간표에 있는지 확인 (없으면 그 경간 전선이 생성되지 않음)
-            idx = next((i for i, p in enumerate(poles) if p.post_number == post_number), None)
-            if idx is not None and 0 < idx < len(poles) - 1:
-                prev_pole, next_pole = poles[idx - 1], poles[idx + 1]
-                new_span = next_pole.pos - prev_pole.pos
-                try:
-                    self.runner.dataprocessor.get_contact_wire_span(new_span, prev_pole.structure)
-                except ValueError:
-                    messagebox.showerror('전주 삭제 불가',
-                                         f'{post_number}: 삭제하면 {prev_pole.post_number}~{next_pole.post_number} '
-                                         f'경간이 {new_span}m 가 되어 경간표에 없습니다.')
-                    return
-
-            # runner.poledata에서 제거
-            poles[:] = [p for p in poles if p.post_number != post_number]
+            pole = next((p for p in poles if p.post_number == post_number), None)
+            if pole is None:
+                return
+            try:
+                notices = pole_edit.delete_pole(self.runner, pole)
+            except ValueError as e:
+                messagebox.showerror('전주 삭제 불가', str(e))
+                return
             if self.selected_pole is not None and not any(p is self.selected_pole.pole for p in poles):
                 self.selected_pole = None
             self.commit_change(f'전주 삭제 {post_number}')
+            if notices:
+                messagebox.showwarning('전주 삭제', '\n'.join(notices))
 
 
     def edit_tree_cell(self, event, track):
