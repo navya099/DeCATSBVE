@@ -23,8 +23,8 @@ def _fmt(value, digits=3):
 
 
 class PoleEditor(tk.Toplevel):
-    def __init__(self, runner, objlib=None, event=None, selection=None):
-        """selection: 처음 보여줄 전주 (EditablePole 또는 PoleDATA). objlib 는 호환용 (사용 안 함)"""
+    def __init__(self, runner, event=None, selection=None):
+        """selection: 처음 보여줄 전주 (EditablePole 또는 PoleDATA)"""
         super().__init__()
         self.title("전주 상세 편집")
         self.geometry("860x640")
