@@ -2,6 +2,7 @@ from core.insulator.insulator_data import InsulatorData
 from core.wire.common_processor import CommonWireProcessor
 from utils.comom_util import initialrize_tenstion_device
 from utils.math_util import calculate_curve_angle, calculate_curve_stagger
+from enums.section_type import SectionType
 
 
 class AirSectionWireProcessor:
@@ -16,33 +17,33 @@ class AirSectionWireProcessor:
         imw_index = self.datap.get_inactive_mw_span(pole.span - 7)
         icw_index = self.datap.get_inactive_cw_span(pole.span - 7)
 
-        if pole.section == '에어섹션1구간_1호주':
+        if pole.section == SectionType.AS1_1:
             self.process_section_start(pole, next_pole, wire, cw_index,icw_index, imw_index, pitch_angle)
 
-        elif pole.section == '에어섹션1구간_2호주':
+        elif pole.section == SectionType.AS1_2:
             self.process_section_two(pole, next_pole, wire, cw_index, pitch_angle)
 
-        elif pole.section == '에어섹션1구간_3호주':
+        elif pole.section == SectionType.AS1_3:
             self.process_section_three(pole, next_pole, wire, cw_index, pitch_angle)
 
-        elif pole.section == '에어섹션1구간_4호주_D':
+        elif pole.section == SectionType.AS1_4_D:
             self.process_section_forth(pole, next_pole, wire, cw_index, pitch_angle)
-        elif pole.section == '에어섹션1구간_4호주_S':
+        elif pole.section == SectionType.AS1_4_S:
             self.process_section_forth_single(pole, next_pole, wire, cw_index, pitch_angle)
 
-        elif pole.section == '에어섹션1구간_5호주':
+        elif pole.section == SectionType.AS1_5:
             self.process_end(pole, next_pole, wire, cw_index, pitch_angle)
 
-        elif pole.section == '에어섹션2구간_1호주':
+        elif pole.section == SectionType.AS2_1:
             self.process_section_five(pole, next_pole, wire, cw_index, pitch_angle)
 
-        elif pole.section == '에어섹션2구간_2호주':
+        elif pole.section == SectionType.AS2_2:
             self.process_section_six(pole, next_pole, wire, cw_index, pitch_angle)
 
-        elif pole.section == '에어섹션2구간_3호주':
+        elif pole.section == SectionType.AS2_3:
             self.process_section_seven(pole, next_pole, wire, cw_index, pitch_angle)
 
-        elif pole.section == '에어섹션2구간_4호주':
+        elif pole.section == SectionType.AS2_4:
             self.process_end(pole, next_pole, wire, cw_index, pitch_angle)
 
     def process_section_start(self, pole, next_pole, wire, cw_index,icw_index, imw_index, pitch_angle):

@@ -77,10 +77,10 @@ def check(step):
         # 흐름방지: 태그 전주 ↔ 장비/전선
         for p in ps:
             has_eq = any(e.type == '흐름방지장치' for e in p.equipments)
-            if p.section in ('흐름방지 시작점', '흐름방지 끝점') and not has_eq:
+            if p.flowstop in ('흐름방지 시작점', '흐름방지 끝점') and not has_eq:
                 msgs.append(f'{t} {p.pos} 흐름방지 태그인데 장치 없음')
-            if p.section not in ('흐름방지 시작점', '흐름방지 끝점') and has_eq:
-                msgs.append(f'{t} {p.pos} 흐름방지 장치가 남아 있음 (태그 {p.section})')
+            if p.flowstop not in ('흐름방지 시작점', '흐름방지 끝점') and has_eq:
+                msgs.append(f'{t} {p.pos} 흐름방지 장치가 남아 있음 (흐름방지 {p.flowstop})')
     if plotted_points() != total:
         msgs.append(f'배치도 점 {plotted_points()} ≠ 전주 {total}')
     # 전선 기하 (본선, 상선은 rail_info 있을 때)
@@ -100,7 +100,7 @@ def check(step):
         if spans != wpos:
             msgs.append(f'{t} 전선 경간 {len(wpos)} ≠ 연속 전주 경간 {len(spans)}')
     ok = not msgs
-    n_dev = sum(1 for ps in poles.values() for p in ps if p.section == '흐름방지 중간점')
+    n_dev = sum(1 for ps in poles.values() for p in ps if p.flowstop == '흐름방지 중간점')
     print(f"[{'OK' if ok else 'FAIL'}] {step}: 전주 {[len(v) for v in poles.values()]}, 흐름방지 구간 {n_dev}")
     for m in msgs[:6]:
         print('     -', m)
@@ -150,12 +150,12 @@ assert runner.poledata['main'][-1] is not last
 check(f'마지막 전주 삭제 {last.pos}')
 
 # 3) 에어조인트 추가 → 흐름방지 재계산 (새 장력구간 생김)
-before = sum(1 for q in runner.poledata['main'] if q.section == '흐름방지 중간점')
+before = sum(1 for q in runner.poledata['main'] if q.flowstop == '흐름방지 중간점')
 p = normal_pole('main', 10)
 select('main', p.pos)
 ed.add_airjoint()
 check(f'에어조인트 추가 중간주 {p.pos}')
-after = sum(1 for q in runner.poledata['main'] if q.section == '흐름방지 중간점')
+after = sum(1 for q in runner.poledata['main'] if q.flowstop == '흐름방지 중간점')
 print(f'     흐름방지 구간(본선) {before} → {after}')
 
 # 4) 같은 에어조인트 제거
@@ -168,7 +168,7 @@ p = normal_pole('main', 1)
 select('main', p.pos)
 ed.add_antidevice()
 check(f'흐름방지 수동 추가 {p.pos}')
-mid = next(q for q in runner.poledata['main'] if q.section == '흐름방지 중간점')
+mid = next(q for q in runner.poledata['main'] if q.flowstop == '흐름방지 중간점')
 select('main', mid.pos)
 ed.remove_antidevice()
 check(f'흐름방지 삭제 {mid.pos}')
@@ -178,7 +178,48 @@ select('main', p2.pos)
 pl.move_left()
 check('다른 전주 이동 후 수동 흐름방지 요청 유지')
 
-# 6) 상선 편집 (복선일 때)
+# 6) 전선 상세 편집기: 끝점 수정 → 다른 편집 후에도 유지 → 자동값으로 되돌리기
+from gui.wireeditor import WireEditor  # noqa: E402
+from event.events import WIRE_SELECTED  # noqa: E402
+p = normal_pole('main', 5)
+select('main', p.pos)
+we = WireEditor(runner, app.events)
+we.bind_events()
+ed.load_selected()  # WIRE_SELECTED → 편집기 탭 채움
+app.update()
+tab = next(i for i, e in enumerate(we.wire_entries) if e['wire_name'] == '전차선')
+we.wire_entries[tab]['next_xoffset'].set(0.33)
+we.wire_entries[tab]['next_height'].set(5.31)
+we.commit()
+check('전선 편집 적용')
+
+
+def cw_end(pos):
+    wd = next(w for w in runner.wire_data['main'] if w.pos == pos)
+    return next(w.end_point for w in wd.wires if w.label == '전차선')
+
+
+edited = (0.33, 5.31)
+if cw_end(p.pos) != edited:
+    failures.append('전선 편집 적용 안 됨'); print('     -', cw_end(p.pos))
+q = normal_pole('main', 14)
+select('main', q.pos)
+pl.move_right()
+check('다른 전주 이동 후 전선 편집 유지')
+if cw_end(p.pos) != edited:
+    failures.append('재계산 후 전선 편집 사라짐'); print('     -', cw_end(p.pos))
+select('main', p.pos)
+we.reset_to_auto()
+check('전선 편집 자동값으로 되돌리기')
+if cw_end(p.pos) == edited or runner.wire_overrides:
+    failures.append('되돌리기 안 됨')
+n_listeners = len(app.events._listeners.get(WIRE_SELECTED, []))
+we.exit_windows()
+app.update()
+if len(app.events._listeners.get(WIRE_SELECTED, [])) != n_listeners - 1:
+    failures.append('전선 편집기를 닫아도 이벤트 구독이 남음')
+
+# 7) 상선 편집 (복선일 때)
 if 'sub' in runner.poledata and runner.poledata['sub']:
     p = normal_pole('sub', 4)
     select('sub', p.pos)

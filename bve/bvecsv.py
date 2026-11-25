@@ -1,4 +1,6 @@
 from utils.comom_util import offsets
+from enums.section_type import SectionType
+from enums.section_type import section_label as section_label_of
 
 
 class BVECSV:
@@ -80,20 +82,20 @@ class BVECSV:
                 eqs = pole.equipments
                 brs = pole.brackets
                 mast = pole.mast
-                section_label = section if section else '일반개소'
+                section_label = section_label_of(pole)
 
                 self.lines.append(f',;{post_number}\n')
                 self.lines.append(f',;-----{section_label}({structure})({curve})-----\n')
 
-                if section in ['에어조인트 시작점 (1호주)', '에어조인트 끝점 (5호주)']:
+                if section in [SectionType.AJ_START, SectionType.AJ_END]:
                     write_mast(pos, mast)
                     write_mast_accessories(pos, mast)
                     write_base(pos, mast)
                     write_brackets(pos, [brs[0]])
                     write_equipment(pos, eqs)
 
-                elif section in ['에어조인트 (2호주)', '에어조인트 중간주 (3호주)', '에어조인트 (4호주)']:
-                    poss = (pos - 0.528, pos + 0.528) if section in ['에어조인트 (2호주)', '에어조인트 (4호주)'] else (
+                elif section in [SectionType.AJ_2, SectionType.AJ_MIDDLE, SectionType.AJ_4]:
+                    poss = (pos - 0.528, pos + 0.528) if section in [SectionType.AJ_2, SectionType.AJ_4] else (
                     pos - 0.8, pos + 0.8)
                     write_mast(pos, mast)
                     write_mast_accessories(pos, mast)
@@ -103,14 +105,14 @@ class BVECSV:
                         self.lines.append(',;가동브래킷구문\n')
                         write_brackets(p, [br])
 
-                elif section in ['에어섹션1구간_1호주', '에어섹션1구간_5호주', '에어섹션2구간_4호주']:
+                elif section in [SectionType.AS1_1, SectionType.AS1_5, SectionType.AS2_4]:
                     write_mast(pos, mast)
                     write_mast_accessories(pos, mast)
                     write_base(pos, mast)
                     write_brackets(pos, [brs[0]])
                     write_equipment(pos, eqs)
 
-                elif section in ['에어섹션1구간_2호주', '에어섹션1구간_3호주', '에어섹션1구간_4호주_S','에어섹션1구간_4호주_D', '에어섹션2구간_1호주', '에어섹션2구간_2호주', '에어섹션2구간_3호주']:
+                elif section in [SectionType.AS1_2, SectionType.AS1_3, SectionType.AS1_4_S,SectionType.AS1_4_D, SectionType.AS2_1, SectionType.AS2_2, SectionType.AS2_3]:
                     # 에어섹션 평행개소는 모두 ±0.528 오프셋 (elif 조건과 동일 목록이라 else 분기는 도달 불가였음)
                     poss = (pos - 0.528, pos + 0.528)
                     write_mast(pos, mast)
@@ -155,7 +157,7 @@ class BVECSV:
                 section = pole.section
                 structure = pole.structure
                 curve = '직선' if pole.radius == 0.0 else '곡선'
-                section_label = section if section else '일반개소'
+                section_label = section_label_of(pole)
 
                 # 구문 작성
                 self.lines.append(f',;{post_number}\n')

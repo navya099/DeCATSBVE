@@ -7,8 +7,8 @@ from core.pole.normal_section_processor import NormalSectionProcessor
 from core.pole.poledata import PoleDATA
 from core.pole.tunnel_section_processor import TunnelSectionProcessor
 from dataset.dataset_getter import DatasetGetter
-from enums.airjoint_section import AirJoint
 from utils.math_util import calculate_curve_angle
+from enums.section_type import SectionType
 
 
 class AirSectionBracketAdder:
@@ -20,7 +20,7 @@ class AirSectionBracketAdder:
 
     def add_airsection_brackets(self, pole: PoleDATA, polyline_with_sta):
         """에어섹션 각 구간별 브래킷 추가"""
-        if pole.section == '에어섹션1구간_1호주':
+        if pole.section == SectionType.AS1_1:
             # START 구간 처리
             if pole.structure == '터널':
                 TunnelSectionProcessor.process(pole, self.prosc, self.idxlib)
@@ -38,7 +38,7 @@ class AirSectionBracketAdder:
                 pole.equipments.append(
                     EquipmentDATA(name=jiseon, index=674, offset=(pole.gauge, 0), rotation=0, type='지선설비'))
 
-        elif pole.section == '에어섹션1구간_2호주':
+        elif pole.section == SectionType.AS1_2:
             # POINT_2 구간 처리
             self.add_common_equipts(pole)
             f_start_coord = self.prosc.get_airsection_offset('F형_시점')
@@ -54,12 +54,12 @@ class AirSectionBracketAdder:
                 as_x *= -1
             self.add_f_and_as_brackets(pole, f_x, f_y, as_x, as_y, end=False)
 
-        elif pole.section == '에어섹션1구간_3호주':
+        elif pole.section == SectionType.AS1_3:
             # MIDDLE 구간 처리
             self.add_common_equipts(pole)
             self.add_as_brackets_middle(pole)
 
-        elif pole.section == '에어섹션1구간_4호주_S':
+        elif pole.section == SectionType.AS1_4_S:
             # POINT_4 구간 처리
             self.add_common_equipts(pole)
             f_end_coord = self.prosc.get_airsection_offset('F형_끝')
@@ -74,7 +74,7 @@ class AirSectionBracketAdder:
                 f_x *= 1
                 as_x *= 1
             self.add_f_and_as_brackets(pole, f_x, f_y, as_x, as_y, end=True)
-        elif pole.section == '에어섹션1구간_4호주_D':
+        elif pole.section == SectionType.AS1_4_D:
             # POINT_4 구간 처리
             self.add_common_equipts(pole)
             f_end_coord = self.prosc.get_airsection_offset('F형_끝')
@@ -103,7 +103,7 @@ class AirSectionBracketAdder:
                 pole.equipments.append(
                     EquipmentDATA(name=jiseon, index=674, offset=(pole.gauge, 0), rotation=0, type='지선설비'))
 
-        elif pole.section == '에어섹션1구간_5호주':
+        elif pole.section == SectionType.AS1_5:
             # END 구간 처리
             en = self.idxlib.get_name(1247)
             if pole.structure == '터널':
@@ -120,7 +120,7 @@ class AirSectionBracketAdder:
                 pole.equipments.append(
                     EquipmentDATA(name=jiseon, index=674, offset=(pole.gauge, 0), rotation=180, type='지선설비'))
 
-        elif pole.section == '에어섹션2구간_1호주':
+        elif pole.section == SectionType.AS2_1:
             # POINT_2 구간 처리
             self.add_common_equipts(pole)
             f_end_coord = self.prosc.get_airsection_offset('F형_끝')
@@ -148,11 +148,11 @@ class AirSectionBracketAdder:
                 jiseon = self.idxlib.get_name(674)
                 pole.equipments.append(
                     EquipmentDATA(name=jiseon, index=674, offset=(pole.gauge, 0), rotation=180, type='지선설비'))
-        elif pole.section == '에어섹션2구간_2호주':
+        elif pole.section == SectionType.AS2_2:
             # MIDDLE 구간 처리
             self.add_common_equipts(pole)
             self.add_as_brackets_middle(pole)
-        elif pole.section == '에어섹션2구간_3호주':
+        elif pole.section == SectionType.AS2_3:
             # POINT_4 구간 처리
             self.add_common_equipts(pole)
             f_start_coord = self.prosc.get_airsection_offset('F형_시점')
@@ -168,7 +168,7 @@ class AirSectionBracketAdder:
                 as_x *= -1
             self.add_f_and_as_brackets(pole, f_x, f_y, as_x, as_y, end=True)
 
-        elif pole.section == '에어섹션2구간_4호주':
+        elif pole.section == SectionType.AS2_4:
             # END 구간 처리
             en = self.idxlib.get_name(682)
             if pole.structure == '터널':

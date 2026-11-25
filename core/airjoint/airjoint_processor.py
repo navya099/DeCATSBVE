@@ -1,6 +1,7 @@
 from core.airjoint.aj_bracket_adder import AirjointBracketAdder
 from core.airjoint.aj_data_context import AirjointDataContext
 from dataset.dataset_getter import DatasetGetter
+from enums.section_type import SectionType
 
 
 class AirJointProcessor:
@@ -18,7 +19,7 @@ class AirJointProcessor:
         feeder_idx = dataprocessor.get_feeder_insulator_idx(pole.structure)
         feeder_name =idxlib.get_name(feeder_idx)
         # 평행틀 설비 인덱스 가져오기
-        length = '1.6m' if pole.section == '에어조인트 중간주 (3호주)' else '1m'
+        length = '1.6m' if pole.section == SectionType.AJ_MIDDLE else '1m'
         spreader_idx = dataprocessor.get_spreader_idx(pole.structure, length)
         spreader_name = idxlib.get_name(spreader_idx)
         #F브래킷 인상높이

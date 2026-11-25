@@ -2,6 +2,7 @@ from core.alignment.define_funtion import iscurve, isslope
 from core.pole.normal_section_processor import NormalSectionProcessor
 from core.pole.poledata import PoleDATA
 from core.structure.define_structure import isbridge_tunnel
+from enums.section_type import SectionType
 from utils.math_util import get_elevation_pos, interpolate_cached, calculate_offset_point
 
 
@@ -43,7 +44,7 @@ class ManualPoleProcessor:
             radius=R,
             cant=c,
             pitch=pitch,
-            section=section,
+            section=SectionType.parse(section),
             post_number=post_number,
             brackets=[],
             mast=None,

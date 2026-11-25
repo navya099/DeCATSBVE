@@ -9,7 +9,6 @@ from core.pole.normal_section_processor import NormalSectionProcessor
 from core.pole.tunnel_section_processor import TunnelSectionProcessor
 from core.structure.define_structure import isbridge_tunnel
 from core.model_rebuilder import alignment_for, rebuild
-from enums.airjoint_section import AirJoint
 from event.events import MODEL_CHANGED, POLE_SELECTED, POLES_SELECTED, WIRE_SELECTED
 from gui.pole_add_ui import PoleADDUI
 from gui.pole_assembler import PoleAssemblerApp
@@ -19,6 +18,7 @@ from vms.editable_pole import EditablePole
 from vms.editable_wires import EditableWire
 from vms.eidtable_bracket import BracketEditor
 from xref_module.transaction import Transaction
+from enums.section_type import FlowStop, SectionType
 
 
 class AutoPoleEditor(tk.Frame):
@@ -156,7 +156,7 @@ class AutoPoleEditor(tk.Frame):
         for pole in self.runner.poledata.get("main", []):
             self.tree_main.insert("", "end", values=(
                 pole.post_number, pole.pos, pole.span, pole.gauge,
-                pole.structure, pole.section, pole.base_type,
+                pole.structure, self._section_cell(pole), pole.base_type,
                 pole.radius, pole.pitch, pole.cant, pole.z
             ))
 
@@ -164,10 +164,17 @@ class AutoPoleEditor(tk.Frame):
         for pole in self.runner.poledata.get("sub", []):
             self.tree_sub.insert("", "end", values=(
                 pole.post_number, pole.pos, pole.span, pole.gauge,
-                pole.structure, pole.section, pole.base_type,
+                pole.structure, self._section_cell(pole), pole.base_type,
                 pole.radius, pole.pitch, pole.cant, pole.z
             ))
 
+
+    @staticmethod
+    def _section_cell(pole):
+        """테이블 '구간' 열: 에어조인트/에어섹션 구간, 흐름방지 위치, 일반개소는 None"""
+        if pole.section:
+            return pole.section
+        return getattr(pole, 'flowstop', None)
 
     # ── 데이터 변경 공통 처리 ─────────────────────────
     def _current_track(self):
@@ -189,10 +196,18 @@ class AutoPoleEditor(tk.Frame):
     def on_model_changed(self):
         """편집용 래퍼(EditablePole/Wire) 재생성, 테이블 갱신, 선택 전주 유지"""
         selected = self.selected_pole.pole if self.selected_pole is not None else None
+        selected_wire = ((self.selected_wire.wire.track_name, self.selected_wire.wire.pos)
+                         if self.selected_wire is not None else None)
         self.create_epoles()
         self.create_ewires()
         self.refresh_tree()
         self.selected_pole = None
+        self.selected_wire = None
+        if selected_wire is not None:
+            track, pos = selected_wire
+            self.selected_wire = next((w for w in self.editable_wires.get(track, []) if w.wire.pos == pos), None)
+            if self.selected_wire is not None and self.events:
+                self.events.emit(WIRE_SELECTED, self.selected_wire)  # 전선 편집기도 새 값으로
         if selected is not None:
             for epoles in self.editable_poles.values():
                 found = next((e for e in epoles if e.pole is selected), None)
@@ -212,7 +227,7 @@ class AutoPoleEditor(tk.Frame):
         for pole in self.runner.poledata.get("main", []):
             self.tree_main.insert("", "end", values=(
                 pole.post_number, pole.pos, pole.span, pole.gauge,
-                pole.structure, pole.section, pole.base_type,
+                pole.structure, self._section_cell(pole), pole.base_type,
                 pole.radius, pole.pitch, pole.cant, pole.z
             ))
 
@@ -222,7 +237,7 @@ class AutoPoleEditor(tk.Frame):
         for pole in self.runner.poledata.get("sub", []):
             self.tree_sub.insert("", "end", values=(
                 pole.post_number, pole.pos, pole.span, pole.gauge,
-                pole.structure, pole.section, pole.base_type,
+                pole.structure, self._section_cell(pole), pole.base_type,
                 pole.radius, pole.pitch, pole.cant, pole.z
             ))
 
@@ -365,6 +380,7 @@ class AutoPoleEditor(tk.Frame):
                 break
 
         if replace_idx is not None:
+            new_pole.uid = poles[replace_idx].uid  # 같은 전주 → 경간 키(전선 편집 내용) 유지
             poles[replace_idx] = new_pole  # 기존 전주 대체
             if self.selected_pole is not None and self.selected_pole.pole.pos == self.original_pos:
                 self.selected_pole.pole = new_pole  # 선택 유지
@@ -474,7 +490,7 @@ class AutoPoleEditor(tk.Frame):
         # 셀 위치 계산
         x, y, width, height = tree.bbox(row_id, col_id)
         #콤보박스 리스트
-        section_list = ['일반개소', '에어조인트 시작점 (1호주)', '에어조인트 (2호주)', '에어조인트 중간주 (3호주)', '에어조인트 (4호주)', '에어조인트 끝점 (5호주)']
+        section_list = ['일반개소', SectionType.AJ_START, SectionType.AJ_2, SectionType.AJ_MIDDLE, SectionType.AJ_4, SectionType.AJ_END]
         base_type_list = ['I', 'O', 'F']
 
         # 임시 Entry 생성
@@ -515,7 +531,7 @@ class AutoPoleEditor(tk.Frame):
                 post_number = values[0]
                 pos = int(values[1])
                 gauge = float(values[3])
-                section = values[5] if values[5] != 'None' else None
+                section = SectionType.parse(values[5])  # 일반개소/'None'/흐름방지 위치 → None
                 base_type = values[6]
                 side = -1 if gauge < 0 else 1
                 # 검증 로직 호출
@@ -558,11 +574,11 @@ class AutoPoleEditor(tk.Frame):
             messagebox.showerror('에러', '지정한 전주는 일반 개소가 아닙니다.')
             return
         # 섹션 변경
-        start.section = '에어조인트 시작점 (1호주)'
-        mid_prev.section = "에어조인트 (2호주)"
-        mid.section = "에어조인트 중간주 (3호주)"
-        mid_next.section = "에어조인트 (4호주)"
-        end.section = "에어조인트 끝점 (5호주)"
+        start.section = SectionType.AJ_START
+        mid_prev.section = SectionType.AJ_2
+        mid.section = SectionType.AJ_MIDDLE
+        mid_next.section = SectionType.AJ_4
+        end.section = SectionType.AJ_END
 
         # 처리
         for pole in [start, mid_prev, mid, mid_next, end]:
@@ -585,7 +601,7 @@ class AutoPoleEditor(tk.Frame):
         mid_next = mid_epole.next_pole.pole
         end = mid_epole.next_pole.next_pole.pole
 
-        if mid.section not in [AirJoint.MIDDLE.value]:
+        if mid.section not in [SectionType.AJ_MIDDLE]:
             messagebox.showerror('에러', '지정한 전주는 에어조인트 설치 개소가 아닙니다.')
             return
 
@@ -628,7 +644,7 @@ class AutoPoleEditor(tk.Frame):
         mid_pos = self.selected_pole.pole.pos
         end_pos = self.selected_pole.next_pole.pole.pos
 
-        if self.selected_pole.pole.section not in ["흐름방지 중간점"]:
+        if getattr(self.selected_pole.pole, 'flowstop', None) != FlowStop.MIDDLE:
             messagebox.showerror('에러', '지정한 전주는 흐름방지장치 설치 개소가 아닙니다.')
             return
         for track in self.runner.poledata.keys():
@@ -647,7 +663,7 @@ class AutoPoleEditor(tk.Frame):
                 post_number = row['전주번호']
                 pos = int(row['측점'])
                 base_type = row['기본타입']
-                section = None if str(row['구간']) == 'None' else str(row['구간'])
+                section = SectionType.parse(row['구간'])
 
                 current_structure = isbridge_tunnel(pos, self.runner.structure_list)
                 gauge = self.runner.dataprocessor.get_pole_gauge(current_structure)
@@ -701,15 +717,15 @@ class AutoPoleEditor(tk.Frame):
                 return
 
         # 섹션 지정
-        poles[0].section = "에어섹션1구간_1호주"
-        poles[1].section = "에어섹션1구간_2호주"
-        poles[2].section = "에어섹션1구간_3호주"
-        poles[3].section = "에어섹션1구간_4호주_D" if mode == 'double' else "에어섹션1구간_4호주_S"
-        poles[4].section = "에어섹션2구간_1호주" if mode == 'double' else "에어섹션1구간_5호주"
+        poles[0].section = SectionType.AS1_1
+        poles[1].section = SectionType.AS1_2
+        poles[2].section = SectionType.AS1_3
+        poles[3].section = SectionType.AS1_4_D if mode == 'double' else SectionType.AS1_4_S
+        poles[4].section = SectionType.AS2_1 if mode == 'double' else SectionType.AS1_5
         if mode == 'double':
-            poles[5].section = "에어섹션2구간_2호주"
-            poles[6].section = "에어섹션2구간_3호주"
-            poles[7].section = "에어섹션2구간_4호주"
+            poles[5].section = SectionType.AS2_2
+            poles[6].section = SectionType.AS2_3
+            poles[7].section = SectionType.AS2_4
 
         # 처리
         for pole in poles:
@@ -745,7 +761,7 @@ class AutoPoleEditor(tk.Frame):
             else:
                 messagebox.showerror('에러', '에어섹션을 구성할 전주가 부족합니다.')
                 return
-        if poles[0].section not in ['에어섹션1구간_1호주']:
+        if poles[0].section not in [SectionType.AS1_1]:
             messagebox.showerror('에러', '지정한 전주는 에어섹션 시작 전주가 아닙니다.')
             return
         # 처리
