@@ -27,7 +27,7 @@ class DatasetGetter:
     def get_spreader_idx(self, current_structure, length: str):
         """평행구간 평행틀 인덱스 반환"""
         spreader_dictionary = self.dataset['spreader']
-        spreader_values = spreader_dictionary.get(current_structure, (0, 0))
+        spreader_values = spreader_dictionary.get(current_structure, {})
         return spreader_values.get(length, None)
 
     def get_bracket_codes(self, bracket_type: str, current_structure: str, base_type: str | None = None):
@@ -37,13 +37,21 @@ class DatasetGetter:
         - current_structure: '토공', '교량', '터널'
         - base_type: 'I' 또는 'O' (일반개소처럼 방향 구분이 필요한 경우만 사용)
         """
-        try:
-            data = self.dataset['bracket']['index'][bracket_type][current_structure]
-            if base_type:
-                return data[base_type]
-            return data
-        except KeyError:
-            raise ValueError(f"지원하지 않는 브래킷 타입/구조물/방향입니다: {bracket_type}, {current_structure}, {base_type}")
+        path = ['bracket', 'index', bracket_type, current_structure] + ([base_type] if base_type else [])
+        return self._lookup(path, f"지원하지 않는 브래킷 타입/구조물/방향입니다: {bracket_type}, {current_structure}, {base_type}")
+
+    def _lookup(self, path, message):
+        """dataset 중첩 키 조회. 실패 시 어느 단계의 키가 없는지, 그 위치의 실제 키, 데이터셋 파일을 알려준다."""
+        node = self.dataset
+        for depth, key in enumerate(path):
+            if not isinstance(node, dict) or key not in node:
+                where = '.'.join(str(k) for k in path[:depth]) or '(최상위)'
+                available = list(node.keys()) if isinstance(node, dict) else type(node).__name__
+                source = self.dataset.get('_source', '알 수 없음') if isinstance(self.dataset, dict) else '알 수 없음'
+                raise ValueError(f"{message} — '{where}' 아래에 키 {key!r} 없음 "
+                                 f"(있는 키: {available}, 데이터셋 파일: {source})")
+            node = node[key]
+        return node
 
 
     def get_fittings(self):

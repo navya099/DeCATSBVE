@@ -2,9 +2,6 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-import tkinter as tk
-from tkinter import ttk
-
 class WireEditor(tk.Toplevel):
     def __init__(self, runner, event=None):
         super().__init__()

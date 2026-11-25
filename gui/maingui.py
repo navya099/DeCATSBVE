@@ -188,6 +188,9 @@ class AutoPoleApp(tk.Tk):
         self.tunnel_direction = {'main': None, 'sub': None}
         self.db = None
         self.dataset = None
+        # 커스텀 모드 전용 데이터셋 경로 (표준 데이터셋은 항상 소스 폴더 config/ 사용)
+        self.custom_dataset_json = None
+        self.custom_spandata = None
         self.idxlib = None
         self.runner = None   # BaseRunner | None
 
@@ -314,6 +317,7 @@ class AutoPoleApp(tk.Tk):
         row2.pack(fill="x", pady=2)
         make_check(row2, "커스텀 모드", self.is_custom_mode).pack(side="left", padx=(0, 8))
         make_check(row2, "도면 작성 (DXF)", self.is_create_dxf).pack(side="left")
+        make_button(c_body2, "커스텀 데이터셋 지정", self.select_custom_dataset).pack(fill="x", pady=(4, 0))
 
         # ── 트랙 설정 ──
         c_outer3, c_body3 = card(sidebar, "🛤️ 트랙 설정")
@@ -358,6 +362,12 @@ class AutoPoleApp(tk.Tk):
             fill="x", pady=(6, 0)
         )
 
+        # 상선 레일번호: 비우면 선로중심간격으로 일정 오프셋, 입력하면 rail_info.txt 의 실제 레일 좌표 사용
+        self.sub_rail_key = tk.StringVar(value="")
+        make_entry(c_body3, "상선 레일번호 (rail_info)", self.sub_rail_key, width=8).pack(
+            fill="x", pady=(6, 0)
+        )
+
         # ── 유틸리티 버튼 ──
         c_outer4, c_body4 = card(sidebar, "🔧 유틸리티")
         c_outer4.pack(fill="x", pady=4)
@@ -365,12 +375,14 @@ class AutoPoleApp(tk.Tk):
         util_buttons = [
             ("러너 갱신",        self.update_runner_tracks, "normal"),
             ("라이브러리 갱신",  self.refresh_library,      "normal"),
-            ("데이터셋 불러오기", self.load_dataset,         "normal"),
-            ("데이터셋 편집",    self.edit_dataset,          "normal"),
+            ("데이터셋 불러오기", self.on_load_dataset,      "normal"),
+            # DataSetEditor 가 이전 형식 데이터셋 키를 사용하므로 현재 형식 대응 전까지 비활성화
+            ("데이터셋 편집 (준비 중)", self.edit_dataset,   "normal", False),
             ("로그 클리어",      self.clear_log,             "warning"),
         ]
-        for txt, cmd, sty in util_buttons:
-            make_button(c_body4, txt, cmd, style=sty).pack(
+        for txt, cmd, sty, *enabled in util_buttons:
+            state = "normal" if (enabled[0] if enabled else True) else "disabled"
+            make_button(c_body4, txt, cmd, style=sty, state=state).pack(
                 fill="x", pady=2
             )
 
@@ -530,6 +542,8 @@ class AutoPoleApp(tk.Tk):
                 self.runner.log(f"현재 모드: 수동 배치모드")
             self.runner.designspeed = int(self.entry_speed_var.get())
             self.runner.iscustommode = int(self.is_custom_mode.get())
+            self.runner.custom_dataset_json = self.custom_dataset_json
+            self.runner.custom_spandata = self.custom_spandata
             self.runner.is_create_dxf = int(self.is_create_dxf.get())
             self.runner.idxlib = self.idxlib
             self.runner.track_mode = self.track_mode.get()
@@ -538,40 +552,26 @@ class AutoPoleApp(tk.Tk):
             self.runner.brokenchain = self.entry_brokenchain_var.get()
             self._set_status("입력 갱신 완료")
             self.log_append("입력값 갱신됨", "INFO")
-            self.filepath_getter()
-            if self.runner.track_mode == "single":
-                if self.single_direction.get() == 'L':
-                    self.runner.track_direction['main'] = -1
-                else:
-                    self.runner.track_direction['main'] = 1
-                self.runner.track_distance = 0.0
-                if self.tunnel_direction['main'].get() == 'L':
-                    self.runner.tunnel_direction['main'] = -1
-                else:
-                    self.runner.tunnel_direction['main'] = 1
-
-                self.runner.log(f"현재 모드: 단일 트랙 (본선 {self.runner.track_direction})")
-            else:
-                if self.double_direction.get() == 'mainL_subR':
-                    self.runner.track_direction['main'] = -1
-                    self.runner.track_direction['sub'] = 1
-                else:
-                    self.runner.track_direction['main'] = 1
-                    self.runner.track_direction['sub'] = -1
-
-                self.runner.track_distance = self.track_distance.get()
-                self.runner.tunnel_direction['main'] = self.runner.track_direction['main'] * -1 #복선 터널은 방향반전
-                self.runner.tunnel_direction['sub'] = self.runner.track_direction['sub'] * -1
-                self.runner.log(f"현재 모드: 이중 트랙 ({self.runner.track_direction})")
-        except ValueError:
+            if not self.filepath_getter():
+                self.log_append("⚠️ info 파일 경로가 지정되지 않았습니다.", "WARN")
+                self._set_status("입력 오류", "error")
+                return False
+            self._apply_track_settings()
+            return True
+        except (ValueError, tk.TclError):
+            # tk.IntVar/DoubleVar.get() 은 잘못된 숫자에 TclError 를 던진다
             self.log_append("⚠️ 숫자를 입력하세요", "WARN")
             self._set_status("입력 오류", "error")
+            return False
 
     def filepath_getter(self):
         folder      = askdirectory(title='info 파일 경로 지정')
+        if not folder:
+            return False
         coord_path  = os.path.join(folder, 'bve_coordinates.txt')
         curve_path  = os.path.join(folder, 'curve_info.txt')
         pitch_path  = os.path.join(folder, 'pitch_info.txt')
+        rail_info_path = os.path.join(folder, 'rail_info.txt')
         structue_path = askopenfilename(
             title='구조물 파일 열기',
             defaultextension=".xlsx",
@@ -582,18 +582,50 @@ class AutoPoleApp(tk.Tk):
             self.runner.curve_file_path     = curve_path
             self.runner.pitch_file_path     = pitch_path
             self.runner.structure_file_path = structue_path
+            self.runner.rail_info_file_path = rail_info_path if os.path.exists(rail_info_path) else None
+        return True
+
+    def _apply_track_settings(self):
+        """UI의 트랙 방향/간격 설정을 runner에 반영"""
+        if self.runner.track_mode == "single":
+            self.runner.track_direction['main'] = -1 if self.single_direction.get() == 'L' else 1
+            self.runner.track_distance = 0.0
+            self.runner.tunnel_direction['main'] = -1 if self.tunnel_direction['main'].get() == 'L' else 1
+            self.runner.log(f"현재 모드: 단일 트랙 (본선 {self.runner.track_direction})")
+        else:
+            if self.double_direction.get() == 'mainL_subR':
+                self.runner.track_direction['main'] = -1
+                self.runner.track_direction['sub'] = 1
+            else:
+                self.runner.track_direction['main'] = 1
+                self.runner.track_direction['sub'] = -1
+
+            self.runner.track_distance = self.track_distance.get()
+            key = self.sub_rail_key.get().strip()
+            self.runner.sub_rail_key = int(key) if key else None  # 숫자가 아니면 ValueError
+            # 복선 터널은 방향 반전
+            self.runner.tunnel_direction['main'] = self.runner.track_direction['main'] * -1
+            self.runner.tunnel_direction['sub'] = self.runner.track_direction['sub'] * -1
+            self.runner.log(f"현재 모드: 이중 트랙 ({self.runner.track_direction})")
 
     def update_runner_tracks(self):
+        """실행 중 runner의 트랙 관련 속성만 갱신"""
         if not self.runner:
             self.log_append("⚠️ 러너가 없습니다. 먼저 새로 만들기를 실행하세요.", "WARN")
             return
-        # 원본 update_runner_tracks 로직 동일
+        try:
+            self._apply_track_settings()
+        except (ValueError, tk.TclError):
+            self.log_append("⚠️ 숫자를 입력하세요", "WARN")
+            self._set_status("입력 오류", "error")
+            return
         self.log_append("트랙 속성 갱신 완료", "SUCCESS")
         self._set_status("트랙 갱신 완료")
 
     def run_and_open_editor(self):
         try:
-            self.update_inputs()
+            if not self.update_inputs():
+                return
             self.refresh_library()
             self.load_dataset()
             self.runner.run()
@@ -613,6 +645,9 @@ class AutoPoleApp(tk.Tk):
             self.log_append(f"❌ {e}", "ERROR")
 
     def save(self):
+        if not self.runner or not self.runner.poledata:
+            messagebox.showwarning('저장 오류', '저장할 데이터가 없습니다. 먼저 실행하세요.')
+            return
         try:
             # 원본 save 로직 동일
             self.runner.polesaver_main = BVECSV(self.runner.poledata['main'], self.runner.wire_data['main'],
@@ -621,21 +656,18 @@ class AutoPoleApp(tk.Tk):
             t2 = self.runner.polesaver_main.create_wire_csv()
             main_path = askdirectory(title='저장 경로 선택')
             if main_path:
-                if not self.runner.pole_path_main:
-                    # 기본 파일명 지정
-                    self.runner.pole_path_main = os.path.join(main_path, '전주.txt')
-                    self.runner.wire_path_main = os.path.join(main_path, '전차선.txt')
+                # 선택한 폴더 기준으로 파일명 지정 (이전 저장 경로가 고정되지 않도록 매번 갱신)
+                self.runner.pole_path_main = os.path.join(main_path, '전주.txt')
+                self.runner.wire_path_main = os.path.join(main_path, '전차선.txt')
                 write_to_file(self.runner.pole_path_main, t)
                 write_to_file(self.runner.wire_path_main, t2)
                 if self.runner.track_mode == "double":
                     self.runner.polesaver_sub = BVECSV(self.runner.poledata['sub'], self.runner.wire_data['sub'],
                                                        track_index=1)
-                    s = self.runner.polesaver_sub.create_pole_csv()  # 본선 저장
+                    s = self.runner.polesaver_sub.create_pole_csv()  # 상선 저장
                     s2 = self.runner.polesaver_sub.create_wire_csv()
-                    if not self.runner.pole_path_sub:
-                        # 기본 파일명 지정
-                        self.runner.pole_path_sub = os.path.join(main_path, '상선전주.txt')
-                        self.runner.wire_path_sub = os.path.join(main_path, '상선전차선.txt')
+                    self.runner.pole_path_sub = os.path.join(main_path, '상선전주.txt')
+                    self.runner.wire_path_sub = os.path.join(main_path, '상선전차선.txt')
 
                     write_to_file(self.runner.pole_path_sub, s)
                     write_to_file(self.runner.wire_path_sub, s2)
@@ -648,25 +680,112 @@ class AutoPoleApp(tk.Tk):
             messagebox.showerror('치명적 에러', f'저장 중 오류: {e}')
             self.log_append(f"❌ {e}", "ERROR")
 
+    PICKLE_DEFAULT_PATH = 'c:/temp/decatsbve.dat'
+    PICKLE_FILETYPES = [("DeCATSBVE data", "*.dat"), ("All files", "*.*")]
+
     def save_pickle(self):
-        save_runner(self.runner, 'c:/temp/decatsbve.dat')
+        if not self.runner:
+            messagebox.showwarning('저장 오류', '저장할 데이터가 없습니다. 먼저 실행하세요.')
+            return
+        path = asksaveasfilename(
+            title='데이터 저장',
+            initialfile=os.path.basename(self.PICKLE_DEFAULT_PATH),
+            defaultextension=".dat",
+            filetypes=self.PICKLE_FILETYPES,
+        )
+        if not path:
+            return
+        try:
+            save_runner(self.runner, path)
+        except Exception as e:
+            messagebox.showerror('저장 오류', f'데이터 저장 중 오류: {e}')
+            self.log_append(f"❌ {e}", "ERROR")
+            return
         messagebox.showinfo('정보', '데이터 저장이 완료됐습니다.')
-        self.log_append("💾 데이터 저장 완료", "SUCCESS")
+        self.log_append(f"💾 데이터 저장 완료 → {path}", "SUCCESS")
         self._set_status("저장 완료")
 
     def load_pickle(self):
-        # 원본 load_pickle 로직 동일
+        path = askopenfilename(title='데이터 로드', filetypes=self.PICKLE_FILETYPES)
+        if not path:
+            return
+        try:
+            runner = load_runner(path)
+            runner.log_widget = self.log_box
+            self.runner = runner
+            # 저장 당시 설정으로 UI를 맞춘 뒤 라이브러리/데이터셋 재로드
+            if int(self.entry_speed_var.get()) != runner.designspeed or bool(self.is_custom_mode.get()) != bool(runner.iscustommode):
+                self.log_append(f"저장된 설정으로 변경: 설계속도 {runner.designspeed}, "
+                                f"사용자정의 모드 {'ON' if runner.iscustommode else 'OFF'}", "WARN")
+            self.entry_speed_var.set(runner.designspeed)
+            self.is_custom_mode.set(bool(runner.iscustommode))
+            # 저장 당시 커스텀 데이터셋 경로 복원 (구버전 .dat 에는 없음)
+            self.custom_dataset_json = getattr(runner, 'custom_dataset_json', None) or self.custom_dataset_json
+            self.custom_spandata = getattr(runner, 'custom_spandata', None) or self.custom_spandata
+            self.refresh_library()
+            self.load_dataset()
+            self.runner.polesaver_main = BVECSV(self.runner.poledata["main"], self.runner.wire_data["main"], 0)
+            if self.runner.track_mode == "double":
+                self.runner.polesaver_sub = BVECSV(self.runner.poledata["sub"], self.runner.wire_data["sub"], 1)
+
+            self.editor.runner = self.runner
+            self.plotter.runner = self.runner
+            self.editor.create_epoles()
+            self.editor.create_ewires()
+            self.editor.refresh_tree()
+            self.plotter.update_plot()
+            self.plotter.selected_pole_scatter = None
+            self.plotter.selected_pole_text = None
+        except Exception as e:
+            messagebox.showerror('로드 오류', f'데이터 로드 중 오류: {e}')
+            self._set_status("로드 오류", "error")
+            self.log_append(f"❌ {e}", "ERROR")
+            return
         messagebox.showinfo('정보', '데이터 로드가 완료됐습니다.')
         self.log_append("📂 데이터 로드 완료", "SUCCESS")
         self._set_status("로드 완료")
 
+    def select_custom_dataset(self):
+        """커스텀 모드용 데이터셋 JSON / spandata xlsx 지정. 둘 다 선택해야 반영"""
+        json_path = askopenfilename(title='커스텀 데이터셋 JSON 선택',
+                                    filetypes=[("JSON files", "*.json *.JSON"), ("All files", "*.*")])
+        if not json_path:
+            return False
+        xlsx_path = askopenfilename(title='커스텀 경간(spandata) xlsx 선택',
+                                    filetypes=[("XLSX files", "*.xlsx"), ("All files", "*.*")])
+        if not xlsx_path:
+            return False
+        self.custom_dataset_json, self.custom_spandata = json_path, xlsx_path
+        if self.runner:
+            self.runner.custom_dataset_json, self.runner.custom_spandata = json_path, xlsx_path
+        self.log_append(f"커스텀 데이터셋 지정: {json_path} / {xlsx_path}", "INFO")
+        return True
+
     def load_dataset(self):
-        self.dataset = load_dataset(int(self.entry_speed_var.get()), int(self.is_custom_mode.get()))
+        """데이터셋 로드. 표준: 소스 폴더 config/, 커스텀: 사용자가 지정한 경로. 실패 시 예외"""
+        custom = bool(self.is_custom_mode.get())
+        if custom and not (self.custom_dataset_json and self.custom_spandata):
+            if not self.select_custom_dataset():
+                raise ValueError('커스텀 모드입니다. 커스텀 데이터셋 JSON 과 spandata xlsx 를 지정하세요.')
+        self.dataset = load_dataset(int(self.entry_speed_var.get()), custom,
+                                    self.custom_dataset_json, self.custom_spandata)
         self.db = DatasetGetter(self.dataset)
         if self.runner:
             self.runner.dataprocessor = self.db
-        self.log_append("데이터셋 로드됨", "INFO")
+        mode = '커스텀' if custom else '표준'
+        self.log_append(f"데이터셋 로드됨({mode}): {self.dataset['_source']['json']}", "INFO")
+
+    def on_load_dataset(self):
+        """'데이터셋 불러오기' 버튼"""
+        try:
+            self.load_dataset()
+            self._set_status("데이터셋 로드 완료")
+        except Exception as e:
+            messagebox.showerror('데이터셋 오류', str(e))
+            self._set_status("데이터셋 오류", "error")
+            self.log_append(f"❌ {e}", "ERROR")
 
     def edit_dataset(self):
-        # de = DataSetEditor(self.dataset)
-        pass
+        # TODO: DataSetEditor 를 현재 데이터셋 형식(design/mast/bracket/wire/...)에 맞게 재작성
+        messagebox.showinfo('안내', '데이터셋 편집 기능은 현재 데이터셋 형식 대응 작업 중입니다.\n'
+                                  'config/ 의 JSON 을 직접 수정하거나 커스텀 데이터셋을 지정하세요.')

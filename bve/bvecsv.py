@@ -111,8 +111,8 @@ class BVECSV:
                     write_equipment(pos, eqs)
 
                 elif section in ['에어섹션1구간_2호주', '에어섹션1구간_3호주', '에어섹션1구간_4호주_S','에어섹션1구간_4호주_D', '에어섹션2구간_1호주', '에어섹션2구간_2호주', '에어섹션2구간_3호주']:
-                    poss = (pos - 0.528, pos + 0.528) if section in ['에어섹션1구간_2호주', '에어섹션1구간_3호주', '에어섹션1구간_4호주_S','에어섹션1구간_4호주_D', '에어섹션2구간_1호주', '에어섹션2구간_2호주', '에어섹션2구간_3호주'] else (
-                    pos - 0.8, pos + 0.8)
+                    # 에어섹션 평행개소는 모두 ±0.528 오프셋 (elif 조건과 동일 목록이라 else 분기는 도달 불가였음)
+                    poss = (pos - 0.528, pos + 0.528)
                     write_mast(pos, mast)
                     write_mast_accessories(pos, mast)
                     write_base(pos, mast)
@@ -141,7 +141,14 @@ class BVECSV:
         전선 구문 생성 메서드
         """
         self.lines = []  # 코드 실행전 초기화
-        for pole, wire in zip(self.poledata, self.wiredata):
+        # zip 으로 순서대로 짝지으면 전선이 하나라도 빠질 때 이후 전선이 모두 한 경간씩 밀린다
+        poles_by_pos = {p.pos: p for p in self.poledata}
+        pos = None
+        for wire in self.wiredata:
+            pole = poles_by_pos.get(wire.pos)
+            if pole is None:
+                print(f"전선에 해당하는 전주 없음: {wire.pos}")
+                continue
             try:
                 pos = pole.pos
                 post_number = pole.post_number

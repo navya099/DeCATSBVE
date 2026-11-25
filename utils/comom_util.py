@@ -169,18 +169,19 @@ def offsets(n, s):
         return [-s * 0.5, s * 0.5]
     return [(i - (n - 1) / 2) * s * 0.5 for i in range(n)]
 
+MAX_SPAN_STRAIGHT = {150: 50, 250: 60, 350: 63}
+MAX_SPAN_TUNNEL = {150: 40, 250: 45, 350: 50}
+
+
 def get_max_span_straight(speed):
-    if speed == 150:
-        return 50
-    elif speed == 250:
-        return 60
-    elif speed == 350:
-        return 63
+    try:
+        return MAX_SPAN_STRAIGHT[speed]
+    except KeyError:
+        raise ValueError(f"지원하지 않는 설계속도입니다(직선 최대경간): {speed}") from None
+
 
 def get_max_span_tunnel(speed):
-    if speed == 150:
-        return 40
-    elif speed == 250:
-        return 45
-    elif speed == 350:
-        return 50
+    try:
+        return MAX_SPAN_TUNNEL[speed]
+    except KeyError:
+        raise ValueError(f"지원하지 않는 설계속도입니다(터널 최대경간): {speed}") from None
