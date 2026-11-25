@@ -23,7 +23,8 @@ from event.event_controller import EventController
 from event.events import MODEL_CHANGED
 from core.model_rebuilder import normalize
 from file_io.filemanager import write_to_file, save_runner, load_runner
-from gui.dataset_gui import DataSetEditor
+from core.dataset_edit import DatasetDocument
+from gui.dataset_gui import DatasetEditor
 from gui.maineditor import AutoPoleEditor
 from gui.pole_plotter import PlotPoleMap
 from xref_module.index_libmgr import IndexLibrary
@@ -375,8 +376,7 @@ class AutoPoleApp(tk.Tk):
             ("러너 갱신",        self.update_runner_tracks, "normal"),
             ("라이브러리 갱신",  self.refresh_library,      "normal"),
             ("데이터셋 불러오기", self.on_load_dataset,      "normal"),
-            # DataSetEditor 가 이전 형식 데이터셋 키를 사용하므로 현재 형식 대응 전까지 비활성화
-            ("데이터셋 편집 (준비 중)", self.edit_dataset,   "normal", False),
+            ("데이터셋 편집",    self.edit_dataset,          "normal"),
             ("로그 클리어",      self.clear_log,             "warning"),
         ]
         for txt, cmd, sty, *enabled in util_buttons:
@@ -784,6 +784,24 @@ class AutoPoleApp(tk.Tk):
             self.log_append(f"❌ {e}", "ERROR")
 
     def edit_dataset(self):
-        # TODO: DataSetEditor 를 현재 데이터셋 형식(design/mast/bracket/wire/...)에 맞게 재작성
-        messagebox.showinfo('안내', '데이터셋 편집 기능은 현재 데이터셋 형식 대응 작업 중입니다.\n'
-                                  'config/ 의 JSON 을 직접 수정하거나 커스텀 데이터셋을 지정하세요.')
+        """데이터셋 편집기 열기: 커스텀 모드면 지정한 커스텀 데이터셋, 아니면 현재 설계속도의 표준 데이터셋"""
+        try:
+            if bool(self.is_custom_mode.get()) and self.custom_dataset_json and self.custom_spandata:
+                doc = DatasetDocument.load(self.custom_dataset_json, self.custom_spandata)
+            else:
+                doc = DatasetDocument.from_standard(int(self.entry_speed_var.get()))
+        except Exception as e:
+            messagebox.showerror('데이터셋 편집', f'데이터셋을 열 수 없습니다: {e}')
+            return None
+        return DatasetEditor(doc, on_use=self.use_custom_dataset)
+
+    def use_custom_dataset(self, json_path, xlsx_path):
+        """편집기에서 저장한 데이터셋을 커스텀 데이터셋으로 지정하고 다시 읽음 (다음 실행부터 적용)"""
+        self.custom_dataset_json, self.custom_spandata = json_path, xlsx_path
+        self.is_custom_mode.set(True)
+        if self.runner:
+            self.runner.iscustommode = 1
+            self.runner.custom_dataset_json, self.runner.custom_spandata = json_path, xlsx_path
+        self.on_load_dataset()
+        self.log_append("커스텀 데이터셋 지정: 다음 실행부터 적용됩니다 (지금 전주는 다시 실행하거나 "
+                        "'자동 구성으로 되돌리기'로 반영)", "INFO")

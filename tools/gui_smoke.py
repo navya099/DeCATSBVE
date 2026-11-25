@@ -412,6 +412,64 @@ if 'sub' in runner.poledata and runner.poledata['sub']:
         failures.append('상선 에어조인트 추가 안 됨')
     sx.exit_windows()
 
+# 9) 데이터셋 편집기: 값 수정·표준값 복원, 하위 항목 추가·삭제, 경간표 편집, 잘못된 입력, 오류 시 저장 차단, 저장 후 커스텀 사용
+import tempfile  # noqa: E402
+import gui.dataset_gui as dataset_gui  # noqa: E402
+de = app.edit_dataset()
+app.update()
+if de is None or not de.tree.exists('mast.gauge.토공') or not de.doc.is_standard:
+    failures.append('데이터셋 편집기가 표준 데이터셋 설정값을 표시하지 않음')
+else:
+    def pick_value(iid):
+        parent = de.tree.parent(iid)
+        while parent:
+            de.tree.item(parent, open=True); parent = de.tree.parent(parent)
+        de.tree.selection_set(iid); de._on_value_selected(); app.update()
+    pick_value('mast.gauge.토공')
+    de.value_var.set('3.25'); de.apply_value()
+    if de.doc.get(('mast', 'gauge', '토공')) != 3.25 or de.tree.item('mast.gauge.토공', 'values')[2] != '변경됨':
+        failures.append('데이터셋 값 수정·변경 표시 안 됨')
+    de.reset_value()
+    if de.doc.get(('mast', 'gauge', '토공')) == 3.25:
+        failures.append('표준값으로 되돌리기 안 됨')
+    de.value_var.set('세미터'); de.apply_value()   # 숫자 자리에 문자 → 오류 안내, 값 그대로
+    if de.doc.get(('mast', 'gauge', '토공')) == '세미터':
+        failures.append('잘못된 입력이 저장됨')
+    pick_value('wire.offset')
+    de.new_key_var.set('Extra'); de.new_value_var.set('{}'); de.add_key()
+    if not de.tree.exists('wire.offset.Extra'):
+        failures.append('하위 항목 추가 안 됨')
+    pick_value('wire.offset.Extra'); de.remove_key()
+    if de.tree.exists('wire.offset.Extra'):
+        failures.append('하위 항목 삭제 안 됨')
+    de.notebook.select(1); de.sheet_var.set('토공전차선'); de._refresh_span_table()
+    de.span_tree.selection_set('0'); de._on_span_selected()
+    old_idx = de.doc.spans['토공전차선'].at[0, '인덱스']
+    de.span_vars['인덱스'].set(str(int(old_idx) + 1)); de.apply_span_row()
+    if de.doc.spans['토공전차선'].at[0, '인덱스'] != int(old_idx) + 1:
+        failures.append('경간표 행 수정 안 됨')
+    n_rows = len(de.doc.spans['토공전차선'])
+    de.add_span_row()
+    de.remove_span_row()
+    if len(de.doc.spans['토공전차선']) != n_rows:
+        failures.append('경간표 행 추가·삭제 안 됨')
+    tmp = tempfile.mkdtemp()
+    answers = iter([os.path.join(tmp, 'c.json'), os.path.join(tmp, 'c_span.xlsx')] * 2)
+    dataset_gui.asksaveasfilename = lambda *a, **k: next(answers)
+    saved_gauge = de.doc.data['mast']['gauge'].pop('교량')   # 검사 오류 상태로 저장 시도 → 차단
+    de.save_and_use()
+    if os.path.exists(os.path.join(tmp, 'c.json')) or app.is_custom_mode.get():
+        failures.append('검사 오류가 있는데 저장됨')
+    de.doc.data['mast']['gauge']['교량'] = saved_gauge
+    de.save_and_use()
+    app.update()
+    if not (os.path.exists(os.path.join(tmp, 'c.json')) and app.is_custom_mode.get()
+            and app.custom_dataset_json == os.path.join(tmp, 'c.json')
+            and app.dataset['_source']['json'] == os.path.join(tmp, 'c.json')):
+        failures.append('저장 후 커스텀으로 사용 안 됨')
+    print(f"[{'OK' if not de.doc.dirty else 'FAIL'}] 데이터셋 편집기: 수정·경간표·검사·저장 후 커스텀 사용")
+    de.close()
+
 app.destroy()
 print('RESULT', 'PASS' if not failures else f'FAIL {failures}')
 sys.exit(1 if failures else 0)
