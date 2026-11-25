@@ -33,8 +33,25 @@ def normalize(runner):
                 pole.section = None
             pole.flowstop = flowstop
             pole.section = SectionType.parse(pole.section)
+            _repair_mast_offset(runner, pole)
     if not hasattr(runner, 'wire_overrides') or runner.wire_overrides is None:
         runner.wire_overrides = {}
+
+
+def _repair_mast_offset(runner, pole):
+    """이전 전주 조립기 버그로 기둥 offset 이 숫자 하나(게이지)로 저장된 경우 (x, y) 로 복구
+    (숫자 하나면 CSV 출력에서 그 전주의 기둥·밴드·기초·브래킷 줄이 빠졌음)"""
+    mast = getattr(pole, 'mast', None)
+    if mast is None or not isinstance(mast.offset, (int, float)):
+        return
+    y = 0
+    if getattr(runner, 'dataprocessor', None) is not None:
+        from core.mast.mast_builder import MASTBuilder
+        try:
+            y = MASTBuilder.get_yoffset(runner.dataprocessor, pole.structure)
+        except Exception:
+            y = 0
+    mast.offset = (mast.offset, y)  # 자동 생성과 같은 값 형식 유지 (CSV 표기 동일)
 
 
 def rebuild(runner):

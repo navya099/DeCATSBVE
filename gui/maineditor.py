@@ -11,7 +11,7 @@ from core.structure.define_structure import isbridge_tunnel
 from core.model_rebuilder import alignment_for, rebuild
 from event.events import MODEL_CHANGED, POLE_SELECTED, POLES_SELECTED, WIRE_SELECTED
 from gui.pole_add_ui import PoleADDUI
-from gui.pole_assembler import PoleAssemblerApp
+from gui.pole_assembler import PoleEditor
 from gui.tkdialog import TkDialogService
 from gui.wireeditor import WireEditor
 from vms.editable_pole import EditablePole
@@ -388,8 +388,8 @@ class AutoPoleEditor(tk.Frame):
         self.commit_change()
         return True
     def open_equipment_editor(self):
-        asemlbapp = PoleAssemblerApp(self.runner, self.objlib ,self.events)
-        asemlbapp.bind_events()
+        """선택한 전주로 전주 상세 편집기 열기 (이후 편집기 선택을 따라감)"""
+        return PoleEditor(self.runner, self.objlib, self.events, selection=self.selected_pole)
 
     def open_wire_editor(self):
         """선택한 경간으로 전선 상세 편집기 열기 (이후 편집기 선택을 따라감)"""
