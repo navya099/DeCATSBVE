@@ -229,11 +229,16 @@ def set_base(runner, pole, name=None, index=None):
 # ── 자동 구성 재생성 (건식게이지 변경, 되돌리기) ─────────────────
 def regenerate(runner, pole, alignment):
     """전주 구성품을 현재 구간·구조물·건식게이지로 자동 배치 규칙에 따라 다시 만든다 (수동 편집 내용은 사라짐)"""
-    pole.brackets, pole.mast, pole.equipments = [], None, []
     section = SectionType.parse(pole.section)
+    # 구간 종류 등록표에서 이 전주가 속한 구간의 처리 방식 사용 (새 에어조인트 타입 등)
+    from core.section_edit import kind_of_pole
+    kind = kind_of_pole(runner, pole) if section is not None else None
+    pole.brackets, pole.mast, pole.equipments = [], None, []
     if section is None:
         processor = TunnelSectionProcessor if pole.structure == '터널' else NormalSectionProcessor
         processor.process(pole, runner.dataprocessor, runner.idxlib)
+    elif kind is not None and kind.processor is not None:
+        kind.processor(runner, pole, alignment)
     elif section.is_airjoint:
         AirJointProcessor.process(pole, alignment, runner.dataprocessor, runner.idxlib)
     else:

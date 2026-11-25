@@ -13,8 +13,7 @@ class PoleADDUI(tk.Toplevel):
         self.entry_section_var = tk.StringVar()
         self.entry_base_type_var = tk.StringVar()
 
-        # 콤보박스 리스트
-        section_list = ['일반개소', '에어조인트 시작점 (1호주)', '에어조인트 (2호주)', '에어조인트 중간주 (3호주)', '에어조인트 (4호주)', '에어조인트 끝점 (5호주)']
+        # 구간(에어조인트·에어섹션 등)은 여러 전주를 묶는 단위라 전주 하나에 지정하지 않음 → 구간 편집기 사용
         base_type_list = ['I', 'O', 'F']
 
         # event가 None일 수 있으므로 초기화 시점에는 바인딩하지 않음
@@ -31,8 +30,7 @@ class PoleADDUI(tk.Toplevel):
         self.entry_gauge.grid(row=2, column=1, padx=5, pady=5)
 
         tk.Label(self, text="구간").grid(row=4, column=0, padx=5, pady=5)
-        self.entry_section = ttk.Combobox(self, width=10, textvariable=self.entry_section_var ,values=section_list)
-        self.entry_section.grid(row=4, column=1, padx=5, pady=5)
+        tk.Label(self, text="일반개소 (구간은 '구간 편집'에서 지정)").grid(row=4, column=1, padx=5, pady=5, sticky="w")
 
         tk.Label(self, text="기본 타입").grid(row=5, column=0, padx=5, pady=5)
         self.entry_base_type = ttk.Combobox(self, width=10, values=base_type_list, textvariable=self.entry_base_type_var)
@@ -50,6 +48,6 @@ class PoleADDUI(tk.Toplevel):
             "post_number": self.entry_post_number_var.get(),
             "pos": self.entry_pos_var.get(),
             "gauge": self.entry_gauge_var.get(),
-            "section": None if self.entry_section_var.get()== '일반개소' else self.entry_section_var.get(),
+            "section": None,
             "base_type": self.entry_base_type_var.get()
         }
