@@ -10,7 +10,8 @@
 인덱스만 주면 이름을 찾는다. 라이브러리에 없으면 ValueError (인덱스 None 으로 저장되지 않도록).
 
 편집 함수는 전주 데이터만 바꾼다. 호출 측에서 rebuild(runner) 후 MODEL_CHANGED 로 화면을 갱신한다.
-건식게이지 변경과 '자동 구성으로 되돌리기'는 그 전주의 구성품을 자동 배치 규칙으로 다시 만든다.
+건식게이지 변경은 게이지 위치(x = ±게이지)에 있던 구성품만 새 게이지로 옮기고 나머지 편집은 유지한다.
+'자동 구성으로 되돌리기'는 그 전주의 구성품을 자동 배치 규칙으로 다시 만든다.
 """
 from dataclasses import dataclass
 
@@ -240,14 +241,40 @@ def regenerate(runner, pole, alignment):
         AirSectionProcessor.process(pole, alignment, runner.dataprocessor, runner.idxlib, mode=mode)
 
 
+GAUGE_ANGLE_EQUIPMENT_TYPES = ('장력장치',)  # 회전각이 게이지로 계산되는 장비
+
+
 def set_gauge(runner, pole, gauge, alignment):
-    """건식게이지 변경: 전주 좌표 갱신 + 구성품 자동 재생성 (기둥·기초·밴드·장비 위치가 게이지를 따름)"""
+    """건식게이지 변경: 전주 좌표 갱신 + 게이지를 따르는 구성품의 x 이동 (편집 내용 유지).
+
+    자동 배치에서 기둥·기초·밴드·급전선설비·장력장치·지선·평행틀 등은 x = 게이지(반대편 설비는 −게이지)에 놓인다.
+    x 가 ±이전 게이지인 구성품만 ±새 게이지로 옮기고 이름·인덱스·높이·회전·추가한 구성품은 그대로 둔다.
+    반환: (옮긴 구성품 수, 안내 문구 목록)
+    """
     gauge = float(gauge)
     if gauge == 0:
         raise ValueError('건식게이지는 0 이 될 수 없습니다.')
     if (gauge < 0) != (pole.gauge < 0):
         raise ValueError('건식게이지 부호(전주 좌/우)는 바꿀 수 없습니다. 값의 크기만 바꾸세요.')
+    old = float(pole.gauge)
+    moved = 0
+    for r in components(pole):
+        x, y = r.offset
+        if abs(x - old) < 1e-9:
+            new_x = gauge
+        elif abs(x + old) < 1e-9:
+            new_x = -gauge
+        else:
+            continue
+        obj = _get(pole, r.key)
+        obj.offset = (new_x, y)
+        moved += 1
     pole.gauge = gauge
     coord, _, bearing = interpolate_cached(alignment, pole.pos)
     pole.coord = calculate_offset_point(bearing, coord, gauge)
-    regenerate(runner, pole, alignment)
+
+    notices = []
+    if any(e.type in GAUGE_ANGLE_EQUIPMENT_TYPES for e in pole.equipments):
+        notices.append('장력장치 회전각은 게이지로 계산된 값이라 이전 값 그대로입니다. '
+                       '정확히 맞추려면 "자동 구성으로 되돌리기"를 쓰세요.')
+    return moved, notices

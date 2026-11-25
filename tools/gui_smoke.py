@@ -7,7 +7,6 @@
 편집기/배치도 함수로 직접 실행하고 단계마다 다음을 검사한다:
     테이블 행·측점 = 전주 데이터, 배치도 점 수 = 전주 수, 연속 전주마다 전선, 전선 기하 오차,
     흐름방지 태그 ↔ 장치 일치
-사용자 PC 전용인 오브젝트 라이브러리 폴더 검사는 건너뛴다.
 """
 import contextlib
 import io
@@ -20,8 +19,6 @@ if ROOT not in sys.path:
 if len(sys.argv) != 2:
     sys.exit(__doc__)
 case = sys.argv[1]
-import xref_module.object_libraymgr as olm  # noqa: E402
-olm.LibraryManager.scan_library = lambda self: None  # 사용자 PC 오브젝트 폴더 검사 생략
 from tkinter import messagebox  # noqa: E402
 messagebox.showerror = lambda *a, **k: print('  [messagebox]', a)
 messagebox.showinfo = lambda *a, **k: None
@@ -265,7 +262,7 @@ if (len(app.events._listeners.get(WIRE_SELECTED, [])) != n_wire_listeners
         or len(app.events._listeners.get(MODEL_CHANGED, [])) != n_model_listeners):
     failures.append('전선 편집기를 닫아도 이벤트 구독이 남음')
 
-# 7) 전주 상세 편집기: 구성품 수정·추가·삭제 → 건식게이지 변경(재생성) → 자동 구성 → 선택 따라감 → 닫기
+# 7) 전주 상세 편집기: 구성품 수정·추가·삭제 → 건식게이지 변경(편집 유지) → 자동 구성 → 선택 따라감 → 닫기
 from core.pole import pole_edit  # noqa: E402
 from event.events import POLE_SELECTED  # noqa: E402
 p = normal_pole('main', 7)
@@ -301,6 +298,8 @@ pe.apply_gauge()
 check(f'전주 편집: 건식게이지 {new_gauge}')
 if p.gauge != new_gauge or p.coord == old_coord or abs(p.mast.offset[0] - new_gauge) > 1e-9:
     failures.append('건식게이지 변경(좌표·기둥 위치) 반영 안 됨')
+if (tuple(p.brackets[0].offset), p.brackets[0].rotation) != ((0.12, 0.34), 1.5):
+    failures.append('건식게이지 변경 후 직접 편집한 브래킷이 사라짐')
 pe.regenerate()
 check('전주 편집: 자동 구성으로 되돌리기')
 if tuple(p.brackets[0].offset) == (0.12, 0.34):

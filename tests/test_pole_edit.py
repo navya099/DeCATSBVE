@@ -15,6 +15,7 @@ sys.path.insert(0, ROOT)
 
 from core.model_rebuilder import alignment_for, normalize, rebuild  # noqa: E402
 from core.pole import pole_edit as pe  # noqa: E402
+from enums.section_type import SectionType  # noqa: E402
 from tools import headless  # noqa: E402
 from tools.verify import load_main_line, wire_errors  # noqa: E402
 from xref_module.index_libmgr import IndexLibrary  # noqa: E402
@@ -148,23 +149,48 @@ def test_flowstop_equipment_read_only_and_not_duplicated(setup):
     assert sum(e.type == '흐름방지장치' for e in start.equipments) == 1
 
 
-def test_set_gauge_regenerates_components_and_coord(setup):
+def test_set_gauge_moves_gauge_components_and_keeps_edits(setup):
     runner, _, pole = setup
     old_coord, old = pole.coord, pole.gauge
-    new = old * 1.2
-    pe.set_gauge(runner, pole, new, alignment_for(runner, 'main'))
+    new = round(old * 1.2, 3)
+    # 직접 편집: 브래킷 위치 변경, 게이지 위치 장비 추가, 게이지와 무관한 위치의 장비 추가
+    pe.set_component(runner, pole, 'br:0', offset=(0.1, 0.2), rotation=2.0)
+    k_on = pe.add_component(runner, pole, 'eq', index=9001, offset=(old, 1.5))
+    k_off = pe.add_component(runner, pole, 'eq', index=9001, offset=(old + 0.7, 1.5))
+    gauge_keys = [r.key for r in pe.components(pole) if abs(r.offset[0] - old) < 1e-9]
+
+    moved, notices = pe.set_gauge(runner, pole, new, alignment_for(runner, 'main'))
     quiet_rebuild(runner)
+    assert moved == len(gauge_keys) and notices == []
     assert pole.gauge == new and pole.coord != old_coord
-    assert row(pole, 'mast').offset[0] == pytest.approx(new)
-    assert all(r.offset[0] == pytest.approx(new) for r in pe.components(pole) if r.kind in ('base', 'acc'))
+    for key in gauge_keys:  # 기둥·기초·밴드·급전선설비·추가 장비가 게이지를 따라감
+        assert row(pole, key).offset[0] == pytest.approx(new)
+    assert row(pole, 'br:0').offset == (0.1, 0.2) and row(pole, 'br:0').rotation == 2.0  # 편집 유지
+    assert row(pole, k_on).offset == (new, 1.5)
+    assert row(pole, k_off).offset == (old + 0.7, 1.5)  # 게이지 위치가 아닌 것은 그대로
     line = load_main_line(os.path.join(CASES, 'synthetic_route', 'bve_coordinates.txt'))
     by_pos = {p.pos: p for p in runner.poledata['main']}
     rows = [dict(pos=wd.pos, next_pos=by_pos[wd.pos].next_pos, start=list(w.offset), end=list(w.end_point),
                  yaw=w.adjusted_angle, station=w.station, label=w.label, radius=0)
             for wd in runner.wire_data['main'] for w in wd.wires]
-    assert wire_errors(rows, line)[0][0] < 1e-5  # 게이지를 따르는 AF/FPW 전선도 새 위치로
+    assert wire_errors(rows, line)[0][0] < 1e-5
     with pytest.raises(ValueError):
         pe.set_gauge(runner, pole, -new, alignment_for(runner, 'main'))  # 좌우 변경 불가
+
+
+def test_set_gauge_moves_opposite_side_and_warns_tension_angle(setup):
+    runner, poles, _ = setup
+    tunnel = next(p for p in poles if p.structure == '터널' and p.section is None)
+    opposite = [r.key for r in pe.components(tunnel) if abs(r.offset[0] + tunnel.gauge) < 1e-9]
+    assert opposite  # 터널 급전선설비는 반대편(−게이지)
+    new = round(tunnel.gauge * 1.1, 3)
+    pe.set_gauge(runner, tunnel, new, alignment_for(runner, 'main'))
+    assert all(row(tunnel, k).offset[0] == pytest.approx(-new) for k in opposite)
+
+    aj_start = next(p for p in poles if p.section == SectionType.AJ_START)
+    assert any(e.type == '장력장치' for e in aj_start.equipments)
+    _, notices = pe.set_gauge(runner, aj_start, aj_start.gauge * 1.1, alignment_for(runner, 'main'))
+    assert notices and '장력장치' in notices[0]
 
 
 def test_regenerate_restores_auto_output(setup, tmp_path):

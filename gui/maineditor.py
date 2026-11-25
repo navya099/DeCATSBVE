@@ -22,7 +22,7 @@ from enums.section_type import FlowStop, SectionType
 
 
 class AutoPoleEditor(tk.Frame):
-    def __init__(self, runner, objlib, events=None, master=None):
+    def __init__(self, runner, objlib=None, events=None, master=None):
         super().__init__(master)
         self.original_pos = None
         self.selected_wire = None

@@ -27,7 +27,6 @@ from gui.dataset_gui import DataSetEditor
 from gui.maineditor import AutoPoleEditor
 from gui.pole_plotter import PlotPoleMap
 from xref_module.index_libmgr import IndexLibrary
-from xref_module.object_libraymgr import LibraryManager
 
 
 # ══════════════════════════════════════════════
@@ -203,8 +202,7 @@ class AutoPoleApp(tk.Tk):
 
         # 원본 객체들 (실제 사용 시 주석 해제)
         self.events = EventController()
-        self.objlib = LibraryManager()
-        self.objlib.scan_library()
+        self.objlib = None  # 오브젝트 라이브러리 폴더는 더 이상 쓰지 않음 (오브젝트 이름↔인덱스는 인덱스 라이브러리)
 
         self._apply_ttk_style()
         self._build_ui()

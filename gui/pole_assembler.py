@@ -49,7 +49,7 @@ class PoleEditor(tk.Toplevel):
         ttk.Label(gauge_row, text="건식게이지").pack(side="left")
         self.gauge_var = tk.DoubleVar()
         ttk.Entry(gauge_row, textvariable=self.gauge_var, width=10).pack(side="left", padx=4)
-        self.btn_gauge = ttk.Button(gauge_row, text="게이지 적용 (구성 재생성)", command=self.apply_gauge)
+        self.btn_gauge = ttk.Button(gauge_row, text="게이지 적용", command=self.apply_gauge)
         self.btn_gauge.pack(side="left", padx=3)
         self.btn_regen = ttk.Button(gauge_row, text="자동 구성으로 되돌리기", command=self.regenerate)
         self.btn_regen.pack(side="left", padx=3)
@@ -288,12 +288,11 @@ class PoleEditor(tk.Toplevel):
                 gauge = self.gauge_var.get()
             except tk.TclError:
                 raise ValueError('건식게이지는 숫자로 입력하세요.') from None
-            if not messagebox.askyesno('건식게이지 변경', '건식게이지를 바꾸면 이 전주의 구성품을 자동으로 다시 만듭니다.\n'
-                                                     '직접 편집한 구성품은 사라집니다. 계속할까요?', parent=self):
-                return
-            pole_edit.set_gauge(self.runner, self.pole, gauge, alignment_for(self.runner, self.pole.track))
-            self.selected_key = None
-            self._commit(f'건식게이지 {gauge} 적용 (구성품 재생성)')
+            moved, notices = pole_edit.set_gauge(self.runner, self.pole, gauge,
+                                                 alignment_for(self.runner, self.pole.track))
+            self._commit(f'건식게이지 {gauge} 적용 (게이지 위치 구성품 {moved}개 이동, 편집 내용 유지)')
+            if notices:
+                messagebox.showinfo('건식게이지 변경', '\n'.join(notices), parent=self)
         self._run(action)
 
     def regenerate(self):
