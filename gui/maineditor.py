@@ -2,23 +2,17 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from tkinter.filedialog import askopenfilename
 
-from core.airjoint.airjoint_processor import AirJointProcessor
-from core.airsection.airsection_processor import AirSectionProcessor
 from core.pole.manual_pole_processor import ManualPoleProcessor
-from core.pole.normal_section_processor import NormalSectionProcessor
-from core.pole.tunnel_section_processor import TunnelSectionProcessor
 from core.structure.define_structure import isbridge_tunnel
 from core.model_rebuilder import alignment_for, rebuild
 from event.events import MODEL_CHANGED, POLE_SELECTED, POLES_SELECTED, WIRE_SELECTED
 from gui.pole_add_ui import PoleADDUI
 from gui.pole_assembler import PoleEditor
-from gui.tkdialog import TkDialogService
+from gui.section_editor import SectionEditor
 from gui.wireeditor import WireEditor
 from vms.editable_pole import EditablePole
 from vms.editable_wires import EditableWire
-from vms.eidtable_bracket import BracketEditor
-from xref_module.transaction import Transaction
-from enums.section_type import FlowStop, SectionType
+from enums.section_type import SectionType
 
 
 class AutoPoleEditor(tk.Frame):
@@ -121,12 +115,7 @@ class AutoPoleEditor(tk.Frame):
         tk.Button(self, text="전주 추가", command=self.add_pole).pack(side="left")
         tk.Button(self, text="전주 삭제", command=self.delete_pole).pack(side="left")
         tk.Button(self, text="파일에서 전주 추가", command=self.add_pole_with_file).pack(side="left")
-        tk.Button(self, text="에어조인트 추가", command=self.add_airjoint).pack(side="left")
-        tk.Button(self, text="에어조인트 삭제", command=self.remove_airjoint).pack(side="left")
-        tk.Button(self, text="흐름방지장치 추가", command=self.add_antidevice).pack(side="left")
-        tk.Button(self, text="흐름방지장치 삭제", command=self.remove_antidevice).pack(side="left")
-        tk.Button(self, text="에어섹션 추가", command=self.add_airsection).pack(side="left")
-        tk.Button(self, text="에어섹션 제거", command=self.remove_airsection).pack(side="left")
+        tk.Button(self, text="구간 편집 (에어조인트·에어섹션·흐름방지)", command=self.open_section_editor).pack(side="left")
 
     def on_tree_click(self, event, track):
         tree = self.tree_main if track == "main" else self.tree_sub
@@ -390,6 +379,22 @@ class AutoPoleEditor(tk.Frame):
         """선택한 전주로 전주 상세 편집기 열기 (이후 편집기 선택을 따라감)"""
         return PoleEditor(self.runner, self.events, selection=self.selected_pole)
 
+    def open_section_editor(self):
+        """구간 편집기 열기 (선택한 전주 = 추가할 구간의 시작 전주, 이후 편집기 선택을 따라감)"""
+        return SectionEditor(self.runner, self.events, selection=self.selected_pole, focus_callback=self.focus_pole)
+
+    def focus_pole(self, track, pos):
+        """테이블에서 해당 전주를 선택하고 다른 화면에도 선택을 알림"""
+        tree = self.tree_main if track == 'main' else self.tree_sub
+        self.notebook.select(0 if track == 'main' else 1)
+        for item in tree.get_children():
+            if float(tree.item(item, 'values')[1]) == float(pos):
+                tree.selection_set(item)
+                tree.see(item)
+                self.load_selected()
+                return True
+        return False
+
     def open_wire_editor(self):
         """선택한 경간으로 전선 상세 편집기 열기 (이후 편집기 선택을 따라감)"""
         return WireEditor(self.runner, self.events, selection=self.selected_wire)
@@ -470,13 +475,22 @@ class AutoPoleEditor(tk.Frame):
             return
 
         # 편집 불가능한 열 제한
-        non_editable_cols = [2,4, 7,8,9,10]  # 전주번호, 측점은 수정 불가
+        # 수정 불가 열: 경간, 구조물, 구간(구간 편집기에서만), 곡선반경, 구배, 캔트, 계획고
+        non_editable_cols = [2, 4, 5, 7, 8, 9, 10]
         col_index = int(col_id.replace("#", "")) - 1
         if col_index in non_editable_cols:
             return
 
         item = tree.item(row_id)
         old_value = item["values"][col_index]
+
+        # 구간(에어조인트·에어섹션) 전주는 표에서 다시 만들면 일반개소 구성품으로 바뀌므로 막음
+        pos = float(item["values"][1])
+        pole = next((p for p in self.runner.poledata.get(track, []) if float(p.pos) == pos), None)
+        if pole is not None and pole.section is not None:
+            messagebox.showinfo('전주 편집', f'{pole.post_number} 은(는) {pole.section} 전주입니다.\n'
+                                           "구간 전주는 '구간 편집'에서 구간을 삭제한 뒤 편집하세요.")
+            return
 
         # 원래 값 저장
         self._editing_info = {
@@ -489,7 +503,6 @@ class AutoPoleEditor(tk.Frame):
         # 셀 위치 계산
         x, y, width, height = tree.bbox(row_id, col_id)
         #콤보박스 리스트
-        section_list = ['일반개소', SectionType.AJ_START, SectionType.AJ_2, SectionType.AJ_MIDDLE, SectionType.AJ_4, SectionType.AJ_END]
         base_type_list = ['I', 'O', 'F']
 
         # 임시 Entry 생성
@@ -505,7 +518,6 @@ class AutoPoleEditor(tk.Frame):
             0: ttk.Entry(tree, textvariable=edit_var),
             1: ttk.Entry(tree, textvariable=edit_var),
             3: ttk.Entry(tree, textvariable=edit_var),
-            5: ttk.Combobox(tree, textvariable=edit_var,values=section_list),
             6: ttk.Combobox(tree, textvariable=edit_var,values=base_type_list)
         }
 
@@ -558,99 +570,6 @@ class AutoPoleEditor(tk.Frame):
         #entry.bind("<FocusOut>", save_and_validate)
         entry.focus()
 
-    def add_airjoint(self):
-        self.load_selected()
-        mid_epole = self.selected_pole  # EditablePole 유지
-
-        # 5개 전주 확보
-        start = mid_epole.prev_pole.prev_pole.pole
-        mid_prev = mid_epole.prev_pole.pole
-        mid = mid_epole.pole
-        mid_next = mid_epole.next_pole.pole
-        end = mid_epole.next_pole.next_pole.pole
-
-        if mid.section is not None:
-            messagebox.showerror('에러', '지정한 전주는 일반 개소가 아닙니다.')
-            return
-        # 섹션 변경
-        start.section = SectionType.AJ_START
-        mid_prev.section = SectionType.AJ_2
-        mid.section = SectionType.AJ_MIDDLE
-        mid_next.section = SectionType.AJ_4
-        end.section = SectionType.AJ_END
-
-        # 처리
-        for pole in [start, mid_prev, mid, mid_next, end]:
-            AirJointProcessor.process(
-                pole,
-                alignment_for(self.runner, pole.track),
-                self.runner.dataprocessor,
-                self.runner.idxlib
-            )
-        self.commit_change(f'에어조인트가 설치되었습니다. pos:{mid.pos}')
-
-    def remove_airjoint(self):
-        self.load_selected()
-        mid_epole = self.selected_pole  # EditablePole 유지
-
-        # 5개 전주 확보
-        start = mid_epole.prev_pole.prev_pole.pole
-        mid_prev = mid_epole.prev_pole.pole
-        mid = mid_epole.pole
-        mid_next = mid_epole.next_pole.pole
-        end = mid_epole.next_pole.next_pole.pole
-
-        if mid.section not in [SectionType.AJ_MIDDLE]:
-            messagebox.showerror('에러', '지정한 전주는 에어조인트 설치 개소가 아닙니다.')
-            return
-
-        # 섹션 변경
-        start.section = None
-        mid_prev.section = None
-        mid.section = None
-        mid_next.section = None
-        end.section = None
-
-        # 처리
-        for pole in [start, mid_prev, mid, mid_next, end]:
-            #기본값으로 되돌리게 리셋
-            pole.brackets = []
-            pole.mast = None
-            pole.equipments = []
-            if pole.structure == '터널':
-                TunnelSectionProcessor.process(pole, self.runner.dataprocessor, self.runner.idxlib)
-            else:
-                NormalSectionProcessor.process(pole, self.runner.dataprocessor, self.runner.idxlib)
-        self.commit_change(f'에어조인트가 제거되었습니다. pos:{mid.pos}')
-
-    def add_antidevice(self):
-        self.load_selected()
-        start_pos = self.selected_pole.prev_pole.pole.pos
-        mid_pos = self.selected_pole.pole.pos
-        end_pos = self.selected_pole.next_pole.pole.pos
-        if self.selected_pole.pole.section is not None:
-            messagebox.showerror('에러', '지정한 전주는 일반 개소가 아닙니다.')
-            return
-
-        for track in self.runner.poledata.keys():
-            self.runner.anticreeping_pr.add_manual_section(track, start_pos, end_pos, mid_pos)
-        self.runner.log(f'흐름방지 장치가 설치되었습니다. pos:{mid_pos}')
-        self.notify_model_changed()
-    def remove_antidevice(self):
-        self.load_selected()
-
-        start_pos = self.selected_pole.prev_pole.pole.pos
-        mid_pos = self.selected_pole.pole.pos
-        end_pos = self.selected_pole.next_pole.pole.pos
-
-        if getattr(self.selected_pole.pole, 'flowstop', None) != FlowStop.MIDDLE:
-            messagebox.showerror('에러', '지정한 전주는 흐름방지장치 설치 개소가 아닙니다.')
-            return
-        for track in self.runner.poledata.keys():
-            self.runner.anticreeping_pr.remove_manual_section(track, start_pos, end_pos, mid_pos)
-        self.runner.log(f'흐름방지 장치가 제거되었습니다. pos:{mid_pos}')
-        self.notify_model_changed()
-
     def add_pole_with_file(self):
         xlsxname = askopenfilename()
         import pandas as pd
@@ -687,92 +606,3 @@ class AutoPoleEditor(tk.Frame):
             self.runner.poledata[sheet_name] = poles
         self.selected_pole = None
         self.commit_change(f"엑셀 전주데이터가 로드되었습니다. 계:{len(self.runner.poledata['main'])}")
-
-    def add_airsection(self):
-        app = TkDialogService(self)
-        result = app.select_option_list(['에어섹션', '이중에어섹션'])
-        self.load_selected()
-        start_epole = self.selected_pole  # 시작 전주
-        poles = []
-
-        # 시작 전주 포함
-        poles.append(start_epole.pole)
-
-        # 이후 7개 확보 (총 8개)
-        epole = start_epole
-        count = 0
-        mode = 'single' if result == '에어섹션' else 'double'
-        if mode == 'single':
-            count = 4
-        elif mode == 'double':
-            count = 7
-
-        for _ in range(count):
-            if epole.next_pole:
-                epole = epole.next_pole
-                poles.append(epole.pole)
-            else:
-                messagebox.showerror('에러', '에어섹션을 구성할 전주가 부족합니다.')
-                return
-
-        # 섹션 지정
-        poles[0].section = SectionType.AS1_1
-        poles[1].section = SectionType.AS1_2
-        poles[2].section = SectionType.AS1_3
-        poles[3].section = SectionType.AS1_4_D if mode == 'double' else SectionType.AS1_4_S
-        poles[4].section = SectionType.AS2_1 if mode == 'double' else SectionType.AS1_5
-        if mode == 'double':
-            poles[5].section = SectionType.AS2_2
-            poles[6].section = SectionType.AS2_3
-            poles[7].section = SectionType.AS2_4
-
-        # 처리
-        for pole in poles:
-            AirSectionProcessor.process(
-                pole,
-                alignment_for(self.runner, pole.track),
-                self.runner.dataprocessor,
-                self.runner.idxlib,
-                mode=mode
-            )
-        self.commit_change(f'{result}이 설치되었습니다. 시작 pos:{start_epole.pole.pos}')
-
-    def remove_airsection(self):
-        self.load_selected()
-        start_epole = self.selected_pole  # 시작 전주
-        poles = []
-
-        # 시작 전주 포함
-        poles.append(start_epole.pole)
-
-        # 이후 7개 확보 (총 8개)
-        epole = start_epole
-        count = 0
-        mode = "double" if any("에어섹션2구간" in p.section for p in poles) else "single"
-        if mode == 'single':
-            count = 4
-        elif mode == 'double':
-            count = 7
-        for _ in range(count):
-            if epole.next_pole:
-                epole = epole.next_pole
-                poles.append(epole.pole)
-            else:
-                messagebox.showerror('에러', '에어섹션을 구성할 전주가 부족합니다.')
-                return
-        if poles[0].section not in [SectionType.AS1_1]:
-            messagebox.showerror('에러', '지정한 전주는 에어섹션 시작 전주가 아닙니다.')
-            return
-        # 처리
-        for pole in poles:
-            #기본값으로 되돌리게 리셋
-            pole.section = None
-            pole.brackets = []
-            pole.mast = None
-            pole.equipments = []
-            if pole.structure == '터널':
-                TunnelSectionProcessor.process(pole, self.runner.dataprocessor, self.runner.idxlib)
-            else:
-                NormalSectionProcessor.process(pole, self.runner.dataprocessor, self.runner.idxlib)
-        self.commit_change(f'에어섹션이 제거되었습니다. pos:{start_epole.pole.pos}')
-        self.runner.log(f'에어섹션이 제거되었습니다. pos:{start_epole.pole.pos}')

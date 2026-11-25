@@ -159,34 +159,116 @@ ed.delete_pole()
 assert runner.poledata['main'][-1] is not last
 check(f'마지막 전주 삭제 {last.pos}')
 
-# 3) 에어조인트 추가 → 흐름방지 재계산 (새 장력구간 생김)
-before = sum(1 for q in runner.poledata['main'] if q.flowstop == '흐름방지 중간점')
-p = normal_pole('main', 10)
+# 3~5) 구간 편집기: 에어조인트 추가(→ 흐름방지 재계산)·삭제, 에어섹션 단일/이중, 흐름방지 수동 추가·삭제
+from core import section_edit  # noqa: E402
+from event.events import MODEL_CHANGED, POLE_SELECTED  # noqa: E402
+n_pole_l = len(app.events._listeners.get(POLE_SELECTED, []))
+n_model_l = len(app.events._listeners.get(MODEL_CHANGED, []))
+
+
+def free_run(track, n, k=0, all_tracks=False):
+    """연속 n 개가 모두 일반개소(흐름방지 없음)인 k 번째 시작 전주.
+    all_tracks 면 다른 트랙에도 같은 측점부터 같은 조건인 위치만 (본선 + 상선 동시 추가용)"""
+    def ok(ps, i):
+        return all(ps[j].section is None and ps[j].flowstop is None for j in range(i - 1, i + n + 1))
+    ps = runner.poledata[track]
+    starts = []
+    for i in range(2, len(ps) - n - 1):
+        if not ok(ps, i):
+            continue
+        if all_tracks:
+            others = [runner.poledata[t] for t in runner.poledata if t != track and runner.poledata[t]]
+            idx = [next((j for j, q in enumerate(o) if q.pos == ps[i].pos), None) for o in others]
+            if any(j is None or j < 2 or j > len(o) - n - 2 or not ok(o, j) for j, o in zip(idx, others)):
+                continue
+        starts.append(ps[i])
+    return starts[k]
+
+
+def sections(track='main', kind_id=None):
+    return [i for i in section_edit.find_sections(runner, track) if kind_id is None or (i.kind and i.kind.id == kind_id)]
+
+
+p = free_run('main', 5, 3, all_tracks=True)
 select('main', p.pos)
-ed.add_airjoint()
-check(f'에어조인트 추가 중간주 {p.pos}')
-after = sum(1 for q in runner.poledata['main'] if q.flowstop == '흐름방지 중간점')
+sx = ed.open_section_editor()
+app.update()
+if sx.start != ('main', p.pos):
+    failures.append('구간 편집기 시작 전주가 선택 전주가 아님')
+both = 'sub' in runner.poledata and bool(runner.poledata['sub'])
+if both and sx.track_var.get() != '본선 + 상선':
+    failures.append('복선인데 적용 트랙 기본값이 본선 + 상선이 아님')
+sx.kind_var.set(section_edit.SECTION_KINDS['airjoint_2span'].label); sx.update_preview(); app.update()
+n_preview = len(sx.preview.get_children())
+if n_preview != 5 * (2 if both else 1) or 'disabled' in sx.btn_add.state():
+    failures.append(f'에어조인트 미리보기 이상 ({n_preview}행)')
+before = len(sections('main', 'flowstop'))
+sx.add()
+check(f'구간 편집: 에어조인트 추가 {p.pos}')
+aj = [i for i in sections('main', 'airjoint_2span') if i.start_pos == p.pos]
+after = len(sections('main', 'flowstop'))
 print(f'     흐름방지 구간(본선) {before} → {after}')
+if len(aj) != 1 or after != before + 1:
+    failures.append('에어조인트 추가 또는 흐름방지 재계산 안 됨')
+if both and not [i for i in sections('sub', 'airjoint_2span') if i.start_pos == p.pos]:
+    failures.append('상선에 에어조인트가 함께 추가되지 않음')
+# 겹치는 위치에서는 추가 버튼 비활성 + 문제 표시
+select('main', aj[0].poles[2].pos); app.update()
+if 'disabled' not in sx.btn_add.state() or not sx.problem_var.get():
+    failures.append('겹치는 구간 추가가 막히지 않음')
+# 목록에서 골라 삭제 (삭제할 때마다 목록이 다시 만들어지므로 매번 다시 찾음)
+while True:
+    iid = next((i for i, inst in sx._instances.items()
+                if inst.kind and inst.kind.id == 'airjoint_2span' and inst.start_pos == p.pos), None)
+    if iid is None:
+        break
+    sx.list_tree.selection_set(iid); sx._update_list_buttons()
+    sx.remove_selected()
+    app.update()
+check(f'구간 편집: 에어조인트 삭제 {p.pos}')
+if [i for t in runner.poledata for i in sections(t, 'airjoint_2span') if i.start_pos == p.pos]:
+    failures.append('에어조인트 삭제 안 됨')
 
-# 4) 같은 에어조인트 제거
-select('main', p.pos)
-ed.remove_airjoint()
-check(f'에어조인트 제거 {p.pos}')
+for kid, k in (('airsection_single', 5), ('airsection_double', 6)):
+    p = free_run('main', section_edit.SECTION_KINDS[kid].n_poles, k)
+    select('main', p.pos)
+    sx.track_var.set('본선'); sx.kind_var.set(section_edit.SECTION_KINDS[kid].label); sx.update_preview()
+    sx.add()
+    check(f'구간 편집: {kid} 추가 {p.pos}')
+    found = [i for i in sections('main', kid) if i.start_pos == p.pos]
+    if len(found) != 1:
+        failures.append(f'{kid} 추가 안 됨')
+        continue
+    iid = next(i for i, inst in sx._instances.items() if inst.kind and inst.kind.id == kid and inst.start_pos == p.pos)
+    sx.list_tree.selection_set(iid); sx.goto_selected(); app.update()
+    if ed.selected_pole is None or ed.selected_pole.pole.pos != p.pos:
+        failures.append('위치로 이동이 편집기 선택을 옮기지 않음')
+    sx.remove_selected()
+    check(f'구간 편집: {kid} 삭제')
 
-# 5) 흐름방지 수동 추가/삭제
-p = normal_pole('main', 1)
+p = free_run('main', 3, 1)
 select('main', p.pos)
-ed.add_antidevice()
-check(f'흐름방지 수동 추가 {p.pos}')
-mid = next(q for q in runner.poledata['main'] if q.flowstop == '흐름방지 중간점')
-select('main', mid.pos)
-ed.remove_antidevice()
-check(f'흐름방지 삭제 {mid.pos}')
-# 수동 요청이 이후 재계산에도 유지되는지 (다른 전주 이동 후)
+sx.track_var.set('본선'); sx.kind_var.set(section_edit.SECTION_KINDS['flowstop'].label); sx.update_preview()
+sx.add()
+check(f'구간 편집: 흐름방지 수동 추가 {p.pos}')
+fs = [i for i in sections('main', 'flowstop') if i.start_pos == p.pos]
+if len(fs) != 1:
+    failures.append('흐름방지 수동 추가 안 됨')
 p2 = normal_pole('main', 12)
 select('main', p2.pos)
 pl.move_left()
 check('다른 전주 이동 후 수동 흐름방지 요청 유지')
+if len([i for i in sections('main', 'flowstop') if i.start_pos == p.pos]) != 1:
+    failures.append('재계산 후 수동 흐름방지 사라짐')
+iid = next(i for i, inst in sx._instances.items() if inst.kind and inst.kind.id == 'flowstop' and inst.start_pos == p.pos)
+sx.list_tree.selection_set(iid); sx._update_list_buttons()
+sx.remove_selected()
+check(f'구간 편집: 흐름방지 삭제 {p.pos}')
+sx.exit_windows()
+app.update()
+if (len(app.events._listeners.get(POLE_SELECTED, [])) != n_pole_l
+        or len(app.events._listeners.get(MODEL_CHANGED, [])) != n_model_l):
+    failures.append('구간 편집기를 닫아도 이벤트 구독이 남음')
 
 # 6) 전선 상세 편집기: 표에서 전선 선택 → 지지점 수정 적용 → 다른 편집 후 유지 → 전선 추가·삭제 → 경간 자동값
 from event.events import MODEL_CHANGED, WIRE_SELECTED  # noqa: E402
@@ -320,10 +402,15 @@ if 'sub' in runner.poledata and runner.poledata['sub']:
     select('sub', p.pos)
     pl.move_right()
     check(f'상선 전주 이동 {p.pos}')
-    p = normal_pole('sub', 8)
+    p = free_run('sub', 5, 8)
     select('sub', p.pos)
-    ed.add_airjoint()
+    sx = ed.open_section_editor()
+    sx.track_var.set('상선'); sx.kind_var.set(section_edit.SECTION_KINDS['airjoint_2span'].label); sx.update_preview()
+    sx.add()
     check(f'상선 에어조인트 추가 {p.pos}')
+    if not [i for i in sections('sub', 'airjoint_2span') if i.start_pos == p.pos]:
+        failures.append('상선 에어조인트 추가 안 됨')
+    sx.exit_windows()
 
 app.destroy()
 print('RESULT', 'PASS' if not failures else f'FAIL {failures}')
