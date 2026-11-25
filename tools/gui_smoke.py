@@ -52,8 +52,9 @@ app._show_new_runner()
 app.update()
 
 ed, pl = app.editor, app.plotter
-main_line = load_main_line(cfg['coord'])
-sub_line = load_rail_line(cfg['rail_info'], cfg['sub_rail'], len(main_line)) if cfg.get('sub_rail') is not None else None
+main_line = load_main_line(cfg.get('alignment') or cfg['coord'])
+sub_line = (load_rail_line(cfg['rail_info'], cfg['sub_rail'], len(main_line), main_line.start)
+            if cfg.get('sub_rail') is not None else None)
 failures = []
 
 

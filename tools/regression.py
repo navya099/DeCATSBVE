@@ -125,8 +125,10 @@ def check(case_dir, tol=1e-6, keep_output=None):
         limits = cfg.get('verify') or {}
         if limits:
             sub_rail = cfg.get('sub_rail')
-            rail_info = cfg.get('rail_info') or os.path.join(os.path.dirname(cfg['coord']), 'rail_info.txt')
-            geo = verify.verify(tmp, cfg['coord'], rail_info if sub_rail is not None else None, sub_rail)
+            info_dir = os.path.dirname(cfg.get('alignment') or cfg['coord'])
+            rail_info = cfg.get('rail_info') or os.path.join(info_dir, 'rail_info.txt')
+            geo = verify.verify(tmp, cfg.get('alignment') or cfg['coord'], rail_info if sub_rail is not None else None,
+                                sub_rail)
             for track, r in geo.items():
                 limit = limits.get(f'{track}_max_cm')
                 if limit is not None and r['max_cm'] > limit:

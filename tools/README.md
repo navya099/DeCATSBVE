@@ -13,7 +13,9 @@ python -m tools.headless --info-dir D:/route/info --structure D:/route/info/구�
 python -m tools.headless --info-dir D:/route/info --structure D:/route/info/구조물.xlsx --speed 150 --mode double --track-distance 4.4 --sub-rail 1 --out out/double
 ```
 
-- `--info-dir`: BVEParser 출력 폴더 (`bve_coordinates.txt`, `curve_info.txt`, `pitch_info.txt`, `rail_info.txt`)
+- `--info-dir`: BVEParser 출력 폴더. `bve_alignment.txt`(좌표·곡선·구배 한 파일)가 있으면 그것을 쓰고,
+  없으면 `bve_coordinates.txt`, `curve_info.txt`, `pitch_info.txt`. 복선 상선은 `rail_info.txt`
+- `--alignment`: `bve_alignment.txt` 직접 지정
 - `--idxlib`: 인덱스 라이브러리. Google 시트 `freeobj` 를 내보낸 CSV(`인덱스,파일명,경로`) 또는
   노선의 `.freeobj(N) 경로` 목록 txt. 없으면 출력 주석의 오브젝트 이름이 `None` 으로 나옵니다.
 - `--config case.json` 으로 설정 파일을 쓸 수도 있습니다 (키 설명은 `tools/headless.py` 상단).
@@ -64,11 +66,12 @@ python -m pytest tests
 
 ### 실제 노선 케이스 만들기
 
-1. 폴더를 만들고 `case.json` 작성 (경로는 절대경로 또는 `case.json` 기준 상대경로)
+1. 폴더를 만들고 `case.json` 작성 (경로는 절대경로 또는 `case.json` 기준 상대경로).
+   선형은 `"alignment"`(bve_alignment.txt) 권장, 예전 형식은 `"coord"`, `"curve"`, `"pitch"` 3개 키
 
 ```json
 {
-  "coord": "info/bve_coordinates.txt", "curve": "info/curve_info.txt", "pitch": "info/pitch_info.txt",
+  "alignment": "info/bve_alignment.txt",
   "structure": "info/구조물.xlsx", "idxlib": "프리오브젝트.txt",
   "speed": 250, "mode": "single", "main_direction": "L", "tunnel_direction": "L",
   "start": 0, "end": 90850,

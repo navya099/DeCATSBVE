@@ -567,6 +567,8 @@ class AutoPoleApp(tk.Tk):
         folder      = askdirectory(title='info 파일 경로 지정')
         if not folder:
             return False
+        # BVEParser 출력: bve_alignment.txt(좌표·곡선·구배 한 파일) 우선, 없으면 기존 3개 파일
+        alignment_path = os.path.join(folder, 'bve_alignment.txt')
         coord_path  = os.path.join(folder, 'bve_coordinates.txt')
         curve_path  = os.path.join(folder, 'curve_info.txt')
         pitch_path  = os.path.join(folder, 'pitch_info.txt')
@@ -577,6 +579,7 @@ class AutoPoleApp(tk.Tk):
             filetypes=[("XLSX files", "*.xlsx")],
         )
         if self.runner:
+            self.runner.alignment_file_path = alignment_path if os.path.isfile(alignment_path) else None
             self.runner.coord_file_path     = coord_path
             self.runner.curve_file_path     = curve_path
             self.runner.pitch_file_path     = pitch_path

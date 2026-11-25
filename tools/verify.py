@@ -21,22 +21,46 @@ import sys
 BLOCK = 25
 
 
-def load_main_line(coord_path):
-    with open(coord_path, encoding='utf-8') as f:
-        return [tuple(map(float, l.split(',')[:2])) for l in f if l.strip()]
+class Line(list):
+    """블록 시작점 평면 좌표 [(x, y)] + 첫 블록 측점"""
+
+    def __init__(self, points, start=0.0):
+        super().__init__(points)
+        self.start = start
 
 
-def load_rail_line(rail_info_path, rail_key, n_blocks):
+def load_main_line(path):
+    """본선: bve_alignment.txt(측점 포함) 또는 bve_coordinates.txt(0m 부터)"""
+    rows, start = [], None
+    with open(path, encoding='utf-8-sig') as f:
+        for line in f:
+            c = line.strip().split(',')
+            if len(c) < 2:
+                continue
+            try:
+                values = [float(v) for v in c[:3]]
+            except ValueError:
+                continue  # 머리글
+            if len(c) >= 8:  # bve_alignment.txt: 측점,X,Y,Z,...
+                start = values[0] if start is None else start
+                rows.append((values[1], values[2]))
+            else:            # bve_coordinates.txt: x, y, z
+                rows.append((values[0], values[1]))
+    return Line(rows, start or 0.0)
+
+
+def load_rail_line(rail_info_path, rail_key, n_blocks, start=0.0):
     pts = {}
     with open(rail_info_path, encoding='utf-8') as f:
         for line in f:
             c = line.strip().split(',')
             if len(c) >= 5 and int(float(c[1])) == rail_key:
                 pts[float(c[0])] = (float(c[2]), float(c[3]))
-    return [pts.get(i * float(BLOCK)) for i in range(n_blocks)]
+    return Line([pts.get(start + i * float(BLOCK)) for i in range(n_blocks)], start)
 
 
 def _frame(line, s):
+    s = s - getattr(line, 'start', 0.0)
     i = min(int(s // BLOCK), len(line) - 2)
     (x1, y1), (x2, y2) = line[i], line[i + 1]
     th = math.atan2(y2 - y1, x2 - x1)
@@ -75,7 +99,7 @@ def verify(out_dir, coord_path, rail_info_path=None, sub_rail=None):
         if track == 'main':
             line = main_line
         elif rail_info_path and sub_rail is not None:
-            line = load_rail_line(rail_info_path, sub_rail, len(main_line))
+            line = load_rail_line(rail_info_path, sub_rail, len(main_line), main_line.start)
         else:
             continue  # 상선 기준 좌표 없음
         errs = wire_errors(rows, line)
@@ -96,7 +120,7 @@ def verify(out_dir, coord_path, rail_info_path=None, sub_rail=None):
 def main(argv=None):
     ap = argparse.ArgumentParser(description='DeCATSBVE 전선 기하 검증')
     ap.add_argument('out_dir', help='tools.headless 출력 폴더 (wires.json)')
-    ap.add_argument('--coord', required=True, help='bve_coordinates.txt')
+    ap.add_argument('--coord', required=True, help='bve_alignment.txt 또는 bve_coordinates.txt')
     ap.add_argument('--rail-info', help='rail_info.txt (상선 검증용)')
     ap.add_argument('--sub-rail', type=int, help='상선 레일번호')
     a = ap.parse_args(argv)

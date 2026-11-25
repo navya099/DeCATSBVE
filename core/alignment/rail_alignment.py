@@ -13,20 +13,21 @@ BVE 파서는 .RailEnd 이후에도 레일 항목과 마지막 오프셋을 다�
 """
 import math
 
+from core.alignment.alignment import BLOCK, Alignment
 from utils.comom_util import get_block_index
 
-BLOCK = 25
 
 
-class RailAlignment(list):
-    """[(sta, x, y, z), ...] 선형 + 레일이 그려지는 블록 정보.
+class RailAlignment(Alignment):
+    """상선 선형 (Alignment) + 레일이 그려지는 블록 정보.
 
-    list 를 그대로 상속하므로 기존 보간/고도 함수에 그대로 넘길 수 있다.
+    곡선·구배는 본선과 같은 측점 값을 쓴다 (상선은 본선과 측점을 공유).
     visible_blocks 가 None 이면 전 구간 표시로 간주한다.
     """
 
-    def __init__(self, points, visible_blocks=None, rail_key=None):
-        super().__init__(points)
+    def __init__(self, points, visible_blocks=None, rail_key=None, base=None):
+        super().__init__(points, getattr(base, 'curves', None), getattr(base, 'pitches', None),
+                         block=getattr(base, 'block', BLOCK), source=getattr(base, 'source', None))
         self.visible_blocks = visible_blocks
         self.rail_key = rail_key
 
@@ -74,7 +75,7 @@ def build_rail_alignment(main_alignment, rail_points, fallback_alignment, rail_k
             points.append((sta, rp[0], rp[1], rp[2]))
         else:
             points.append(fb)
-    return RailAlignment(points, visible_blocks, rail_key)
+    return RailAlignment(points, visible_blocks, rail_key, base=main_alignment)
 
 
 def is_span_visible(alignment, pos, next_pos):

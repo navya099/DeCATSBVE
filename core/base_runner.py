@@ -1,5 +1,8 @@
 from core.structure.define_structure import apply_brokenchain_to_structure
-from file_io.filemanager import load_structure_data, load_curve_data, load_pitch_data, load_coordinates
+import os
+
+from core.alignment.alignment import BLOCK, Alignment
+from file_io.filemanager import load_structure_data
 from core.alignment.rail_alignment import parse_rail_info, build_rail_alignment, visible_ranges
 from utils.math_util import clear_geometry_caches, offset_polyline
 
@@ -54,6 +57,9 @@ class BaseRunner:
         self.tunnel_direction: dict[str, int | None] = {'main': None, 'sub': None}
         # 상선 선형을 BVEParser rail_info.txt 의 실제 레일 좌표로 만들 때 사용 (None 이면 일정 간격 오프셋)
         self.rail_info_file_path = None
+        # 선형: BVEParser bve_alignment.txt 경로 (없으면 coord/curve/pitch 3개 파일 사용)
+        self.alignment_file_path = None
+        self.alignment = None
         self.sub_rail_key: int | None = None
         # 전선 상세 편집 내용 (경간 단위 지지점 수정·전선 추가/삭제): core/wire/wire_overrides.py 참고
         self.wire_overrides = {}
@@ -95,36 +101,37 @@ class BaseRunner:
                 self.structure_list, self.brokenchain
             )
 
-        # 곡선 정보 로드
-        self.curvelist = self.safe_load(
-            load_curve_data,
-            self.curve_file_path,
-            "곡선 정보가 성공적으로 로드되었습니다.",
-            "곡선 정보가 비어 있습니다.",
-            "곡선 정보 로드가 실패했습니다."
-        )
+        # 선형 로드: bve_alignment.txt(BVEParser) 하나로 좌표·곡선·구배. 없으면 기존 3개 파일
+        self.alignment = self._load_alignment()
+        self.curvelist = self.alignment.curvelist
+        self.pitchlist = self.alignment.pitchlist
+        self.polyline = self.alignment.coordinates
 
-        # 기울기 정보 로드
-        self.pitchlist = self.safe_load(
-            load_pitch_data,
-            self.pitch_file_path,
-            "기울기 정보가 성공적으로 로드되었습니다.",
-            "기울기 정보가 비어 있습니다.",
-            "기울기 정보 로드가 실패했습니다."
-        )
-        if not self.pitchlist:
-            return
-
-        # 좌표 정보 로드
-        self.polyline = self.safe_load(
-            load_coordinates,
-            self.coord_file_path,
-            "좌표 정보가 성공적으로 로드되었습니다.",
-            "좌표 정보가 비어 있습니다.",
-            "좌표 정보 로드가 실패했습니다."
-        )
-        if not self.polyline:
-            return
+    def _load_alignment(self):
+        alignment_path = getattr(self, 'alignment_file_path', None)
+        try:
+            if alignment_path:
+                alignment = Alignment.from_bve_alignment(alignment_path)
+                source = os.path.basename(alignment_path)
+            else:
+                missing = [p for p in (self.coord_file_path, self.curve_file_path, self.pitch_file_path)
+                           if not p or not os.path.isfile(p)]
+                if missing:
+                    raise FileNotFoundError(f"선형 파일이 없습니다: {missing} (bve_alignment.txt 또는 "
+                                            "bve_coordinates/curve_info/pitch_info.txt 필요)")
+                alignment = Alignment.from_legacy_files(self.coord_file_path, self.curve_file_path,
+                                                        self.pitch_file_path)
+                source = '좌표·곡선·구배 3개 파일'
+        except Exception as e:
+            self.log(f"선형 정보 로드에 실패했습니다. {e}")
+            raise
+        if alignment.block != BLOCK:
+            raise ValueError(f"블록 간격이 {alignment.block}m 입니다. 현재 {BLOCK}m 블록만 지원합니다.")
+        self.log(f"선형 정보가 로드되었습니다 ({source}): {alignment.start:g} ~ {alignment.end:g}m, "
+                 f"블록 {len(alignment)}개, 곡선 블록 {sum(1 for r, _ in alignment.curves.values() if r)}개")
+        if not (alignment.start <= float(self.start_station) <= alignment.end):
+            self.log(f"⚠️ 시점 {self.start_station}m 가 선형 범위({alignment.start:g}~{alignment.end:g}m) 밖입니다.")
+        return alignment
 
     def _build_sub_alignment(self, fallback):
         """rail_info 가 지정되면 실제 레일 좌표로, 아니면 일정 간격 오프셋으로 상선 선형 생성"""
@@ -148,7 +155,8 @@ class BaseRunner:
 
     def create_dictionary_by_track(self):
         clear_geometry_caches()
-        self.polyline_with_sta = [(i * 25, *values) for i, values in enumerate(self.polyline)]
+        # 본선 선형 = Alignment ([(측점, x, y, z)] 리스트 + 측점별 곡선·구배)
+        self.polyline_with_sta = self.alignment
 
         if self.track_mode == 'double':
             # BVE 레일 오프셋과 같은 방식: 각 블록 진행방향의 수직으로 오프셋 (측점·고도 유지)

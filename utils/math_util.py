@@ -111,7 +111,8 @@ def offset_polyline(polyline_with_sta, distance):
             _, x2, y2, _ = polyline_with_sta[i]
         theta = math.atan2(y2 - y1, x2 - x1)
         result.append((sta, x + distance * math.sin(theta), y - distance * math.cos(theta), z))
-    return result
+    derived = getattr(polyline_with_sta, 'derived', None)  # Alignment 이면 곡선·구배를 공유하는 Alignment 로
+    return derived(result) if derived else result
 
 
 def calculate_destination_coordinates(x1, y1, bearing, distance):
