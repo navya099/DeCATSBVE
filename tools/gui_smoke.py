@@ -7,7 +7,6 @@
 편집기/배치도 함수로 직접 실행하고 단계마다 다음을 검사한다:
     테이블 행·측점 = 전주 데이터, 배치도 점 수 = 전주 수, 연속 전주마다 전선, 전선 기하 오차,
     흐름방지 태그 ↔ 장치 일치
-사용자 PC 전용인 오브젝트 라이브러리 폴더 검사는 건너뛴다.
 """
 import contextlib
 import io
@@ -20,11 +19,10 @@ if ROOT not in sys.path:
 if len(sys.argv) != 2:
     sys.exit(__doc__)
 case = sys.argv[1]
-import xref_module.object_libraymgr as olm  # noqa: E402
-olm.LibraryManager.scan_library = lambda self: None  # 사용자 PC 오브젝트 폴더 검사 생략
 from tkinter import messagebox  # noqa: E402
 messagebox.showerror = lambda *a, **k: print('  [messagebox]', a)
 messagebox.showinfo = lambda *a, **k: None
+messagebox.askyesno = lambda *a, **k: True  # 확인 대화상자는 '예'
 
 from gui.maingui import AutoPoleApp  # noqa: E402
 from tools import headless  # noqa: E402
@@ -35,6 +33,18 @@ app.update()
 cfg = headless.load_config(case)
 runner = headless.build_runner(cfg)
 runner.log_widget = app.log_box
+if runner.idxlib.df.empty:  # 합성 노선 등 인덱스 라이브러리가 없으면 자동 배치에 쓰는 인덱스로 최소 구성
+    import pandas as pd  # noqa: E402
+    from xref_module.index_libmgr import IndexLibrary  # noqa: E402
+    used = set()
+    def _collect(node):
+        if isinstance(node, dict):
+            for v in node.values():
+                _collect(v)
+        elif isinstance(node, int) and not isinstance(node, bool):
+            used.add(node)
+    _collect({k: v for k, v in runner.dataprocessor.dataset.items() if k != 'span_data'})
+    runner.idxlib = IndexLibrary(pd.DataFrame([{'인덱스': i, '파일명': f'obj{i}', '경로': f'obj{i}.csv'} for i in sorted(used)]))
 with contextlib.redirect_stdout(io.StringIO()):
     runner.run()
 app.runner = runner
@@ -252,7 +262,59 @@ if (len(app.events._listeners.get(WIRE_SELECTED, [])) != n_wire_listeners
         or len(app.events._listeners.get(MODEL_CHANGED, [])) != n_model_listeners):
     failures.append('전선 편집기를 닫아도 이벤트 구독이 남음')
 
-# 7) 상선 편집 (복선일 때)
+# 7) 전주 상세 편집기: 구성품 수정·추가·삭제 → 건식게이지 변경(편집 유지) → 자동 구성 → 선택 따라감 → 닫기
+from core.pole import pole_edit  # noqa: E402
+from event.events import POLE_SELECTED  # noqa: E402
+p = normal_pole('main', 7)
+select('main', p.pos)
+n_pole_listeners = len(app.events._listeners.get(POLE_SELECTED, []))
+n_model_listeners = len(app.events._listeners.get(MODEL_CHANGED, []))
+pe = ed.open_equipment_editor()
+app.update()
+if pe.pole is not p or not pe.tree.exists('mast') or not pe.tree.exists('br:0'):
+    failures.append('전주 편집기에 선택 전주 구성품이 표시되지 않음')
+pe.tree.selection_set('br:0'); pe._on_row_selected(); app.update()
+pe.x_var.set(0.12); pe.y_var.set(0.34); pe.rot_var.set(1.5)
+pe.apply_edit()
+check('전주 편집: 브래킷 위치 수정')
+if (tuple(p.brackets[0].offset), p.brackets[0].rotation) != ((0.12, 0.34), 1.5):
+    failures.append('브래킷 수정 반영 안 됨')
+feeder = next(e for e in p.equipments if e.type == '급전선설비')
+n_eq = len(p.equipments)
+pe.addkind_var.set('장비'); pe.name_var.set(''); pe.index_var.set(str(feeder.index))
+pe.x_var.set(p.gauge); pe.y_var.set(1.0); pe.rot_var.set(0.0); pe.eqtype_var.set('기타장비')
+pe.add()
+check('전주 편집: 장비 추가')
+if len(p.equipments) != n_eq + 1 or not pe.tree.exists(f'eq:{n_eq}'):
+    failures.append('장비 추가 반영 안 됨')
+pe.tree.selection_set(f'eq:{n_eq}'); pe._on_row_selected(); app.update()
+pe.remove()
+check('전주 편집: 장비 삭제')
+if len(p.equipments) != n_eq:
+    failures.append('장비 삭제 반영 안 됨')
+old_coord, new_gauge = p.coord, round(p.gauge * 1.1, 3)
+pe.gauge_var.set(new_gauge)
+pe.apply_gauge()
+check(f'전주 편집: 건식게이지 {new_gauge}')
+if p.gauge != new_gauge or p.coord == old_coord or abs(p.mast.offset[0] - new_gauge) > 1e-9:
+    failures.append('건식게이지 변경(좌표·기둥 위치) 반영 안 됨')
+if (tuple(p.brackets[0].offset), p.brackets[0].rotation) != ((0.12, 0.34), 1.5):
+    failures.append('건식게이지 변경 후 직접 편집한 브래킷이 사라짐')
+pe.regenerate()
+check('전주 편집: 자동 구성으로 되돌리기')
+if tuple(p.brackets[0].offset) == (0.12, 0.34):
+    failures.append('자동 구성 되돌리기 안 됨')
+q = normal_pole('main', 11)
+select('main', q.pos)
+if pe.pole is not q:
+    failures.append('전주 편집기가 선택을 따라가지 않음')
+pe.exit_windows()
+app.update()
+if (len(app.events._listeners.get(POLE_SELECTED, [])) != n_pole_listeners
+        or len(app.events._listeners.get(MODEL_CHANGED, [])) != n_model_listeners):
+    failures.append('전주 편집기를 닫아도 이벤트 구독이 남음')
+
+# 8) 상선 편집 (복선일 때)
 if 'sub' in runner.poledata and runner.poledata['sub']:
     p = normal_pole('sub', 4)
     select('sub', p.pos)
