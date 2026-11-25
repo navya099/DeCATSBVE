@@ -376,11 +376,13 @@ class AutoPoleApp(tk.Tk):
             ("러너 갱신",        self.update_runner_tracks, "normal"),
             ("라이브러리 갱신",  self.refresh_library,      "normal"),
             ("데이터셋 불러오기", self.on_load_dataset,      "normal"),
-            ("데이터셋 편집",    self.edit_dataset,          "normal"),
+            # DataSetEditor 가 이전 형식 데이터셋 키를 사용하므로 현재 형식 대응 전까지 비활성화
+            ("데이터셋 편집 (준비 중)", self.edit_dataset,   "normal", False),
             ("로그 클리어",      self.clear_log,             "warning"),
         ]
-        for txt, cmd, sty in util_buttons:
-            make_button(c_body4, txt, cmd, style=sty).pack(
+        for txt, cmd, sty, *enabled in util_buttons:
+            state = "normal" if (enabled[0] if enabled else True) else "disabled"
+            make_button(c_body4, txt, cmd, style=sty, state=state).pack(
                 fill="x", pady=2
             )
 
@@ -784,6 +786,6 @@ class AutoPoleApp(tk.Tk):
             self.log_append(f"❌ {e}", "ERROR")
 
     def edit_dataset(self):
-        if self.dataset is None:
-            self.load_dataset()
-        DataSetEditor(self.dataset)
+        # TODO: DataSetEditor 를 현재 데이터셋 형식(design/mast/bracket/wire/...)에 맞게 재작성
+        messagebox.showinfo('안내', '데이터셋 편집 기능은 현재 데이터셋 형식 대응 작업 중입니다.\n'
+                                  'config/ 의 JSON 을 직접 수정하거나 커스텀 데이터셋을 지정하세요.')
