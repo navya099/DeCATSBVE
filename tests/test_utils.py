@@ -6,7 +6,6 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils import math_util  # noqa: E402
 from utils.comom_util import get_max_span_straight, get_max_span_tunnel  # noqa: E402
 from utils.math_util import (  # noqa: E402
     clear_geometry_caches,
@@ -60,11 +59,24 @@ def test_elevation_cache_is_separated_per_polyline():
     assert get_elevation_pos(25, b) == pytest.approx(20.0)
 
 
-def test_clear_geometry_caches():
-    interpolate_cached(make_line(), 25)
-    assert math_util.interpolation_cache
+def test_geometry_cache_is_per_alignment_and_not_pickled():
+    """보간·고도 캐시는 선형 객체마다 따로 있고(.dat 에는 저장 안 함), 리스트도 같은 결과"""
+    import pickle
+    from core.alignment.alignment import Alignment
+    pts = make_line(dz=1.0)
+    a, b = Alignment(pts), Alignment(make_line(y=4.3))
+    assert a.point(30)[1] == pytest.approx(0.0) and b.point(30)[1] == pytest.approx(4.3)
+    assert a.elevation(30) == pytest.approx(1.2)
+    assert a._cache('locate') and a._cache('elevation')
+    restored = pickle.loads(pickle.dumps(a))
+    assert restored._geometry_cache == {} and list(restored) == list(a)
+    assert restored.point(30) == a.point(30)
+    a.clear_cache()
+    assert a._geometry_cache == {}
+    # 리스트를 넘기는 호환 함수도 같은 값
+    assert interpolate_cached(pts, 30) == Alignment(pts).locate(30)
+    assert get_elevation_pos(30, pts) == Alignment(pts).elevation(30)
     clear_geometry_caches()
-    assert not math_util.interpolation_cache
 
 
 @pytest.mark.parametrize("speed,straight,tunnel", [(150, 50, 40), (250, 60, 45), (350, 63, 50)])

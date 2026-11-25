@@ -4,7 +4,6 @@ import os
 from core.alignment.alignment import BLOCK, Alignment
 from file_io.filemanager import load_structure_data
 from core.alignment.rail_alignment import parse_rail_info, build_rail_alignment, visible_ranges
-from utils.math_util import clear_geometry_caches, offset_polyline
 
 class BaseRunner:
     def __init__(self):
@@ -154,7 +153,6 @@ class BaseRunner:
         return alignment
 
     def create_dictionary_by_track(self):
-        clear_geometry_caches()
         # 본선 선형 = Alignment ([(측점, x, y, z)] 리스트 + 측점별 곡선·구배)
         self.polyline_with_sta = self.alignment
 
@@ -162,7 +160,7 @@ class BaseRunner:
             # BVE 레일 오프셋과 같은 방식: 각 블록 진행방향의 수직으로 오프셋 (측점·고도 유지)
             # 본선 전주가 좌측(-1)이면 상선은 우측(+x)
             side = 1 if self.track_direction['main'] == -1 else -1
-            fallback = offset_polyline(self.polyline_with_sta, side * abs(self.track_distance))
+            fallback = self.polyline_with_sta.offset(side * abs(self.track_distance))
             self.offset_line_with_25 = self._build_sub_alignment(fallback)
 
         ######트랙별 처리###### todo

@@ -1,6 +1,7 @@
 
 from core.equipment.equipment_data import EquipmentDATA
-from utils.math_util import change_permile_to_degree, calculate_curve_angle, calculate_slope
+from core.alignment.alignment import as_alignment
+from utils.math_util import change_permile_to_degree
 
 
 from enums.section_type import FlowStop, SectionType
@@ -160,8 +161,8 @@ class AnticreepingDeviceProcessor:
                 if device['tag'] == FlowStop.START:
                     x1 = pole.gauge
                     x2 = cw.end_point[0]
-                    adjusted_angle = calculate_curve_angle(self.wire_processor.polyline_by_track[track_name], pole.pos, pole.next_pos,
-                                                           x1, x2)
+                    adjusted_angle = as_alignment(self.wire_processor.polyline_by_track[track_name]).wire_angle(
+                        pole.pos, pole.next_pos, x1, x2)
                     if pole.structure != '터널':
                         pole.equipments.extend([
                             EquipmentDATA(name='흐름방지장치_강관주용', index=679, offset=(pole.gauge, 0), rotation=adjusted_angle, type='흐름방지장치'),
@@ -174,9 +175,8 @@ class AnticreepingDeviceProcessor:
                 elif device['tag'] == FlowStop.END:
                     x1 = pole.gauge
                     x2 = cw.offset[0]
-                    adjusted_angle = calculate_curve_angle(self.wire_processor.polyline_by_track[track_name], pole.pos,
-                                                           pole.next_pos,
-                                                           x1, x2)
+                    adjusted_angle = as_alignment(self.wire_processor.polyline_by_track[track_name]).wire_angle(
+                        pole.pos, pole.next_pos, x1, x2)
                     if pole.structure != '터널':
                         pole.equipments.extend([
                             EquipmentDATA(name='흐름방지장치_강관주용', index=679, offset=(pole.gauge, 0), rotation=180 - adjusted_angle, type='흐름방지장치'),

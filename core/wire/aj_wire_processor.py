@@ -1,6 +1,5 @@
 from core.wire.common_processor import CommonWireProcessor
 from utils.comom_util import initialrize_tenstion_device
-from utils.math_util import calculate_curve_angle, calculate_curve_stagger
 from enums.section_type import SectionType
 class AirjointWireProcessor:
     def __init__(self, compros: CommonWireProcessor, datap, al):

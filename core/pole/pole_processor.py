@@ -7,7 +7,7 @@ from core.pole.poledata import PoleDATA
 from core.pole.tunnel_section_processor import TunnelSectionProcessor
 from core.structure.define_structure import isbridge_tunnel
 from utils.comom_util import generate_postnumbers, find_post_number
-from utils.math_util import get_elevation_pos, interpolate_cached, calculate_offset_point
+from core.alignment.alignment import as_alignment
 
 class PoleProcessor:
     def __init__(self):
@@ -17,6 +17,7 @@ class PoleProcessor:
                               dataprocessor, airjoint_list, polyline_with_sta, idxlib,
                               track_name="main", side=-1, tunnel_direction=1):
         """단일 트랙 처리 함수"""
+        alignment = as_alignment(polyline_with_sta)
         post_number_lst = generate_postnumbers(positions)
         poles = []
 
@@ -30,11 +31,10 @@ class PoleProcessor:
                 next_structure = isbridge_tunnel(next_pos, structure_list)
                 current_curve, R, c = iscurve(pos, curve_list)
                 current_slope, pitch = isslope(pos, pitchlist)
-                z = get_elevation_pos(pos, polyline_with_sta)
-                next_z = get_elevation_pos(next_pos, polyline_with_sta)
+                z = alignment.elevation(pos)
+                next_z = alignment.elevation(next_pos)
                 current_airjoint = check_isairjoint(pos, airjoint_list)
                 post_number = find_post_number(post_number_lst, pos)
-                coord, _, v1 = interpolate_cached(polyline_with_sta, pos)
 
                 gauge = dataprocessor.get_pole_gauge(current_structure)
                 next_gauge = dataprocessor.get_pole_gauge(next_structure)
@@ -65,7 +65,7 @@ class PoleProcessor:
                         post_number = f'{post_number}D'
                     else:
                         post_number = f'{post_number}U'
-                pos_coord_with_offset = calculate_offset_point(v1, coord, gauge)
+                pos_coord_with_offset = alignment.offset_point(pos, gauge)
 
                 pole = PoleDATA(
                     pos=pos,

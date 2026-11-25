@@ -25,7 +25,7 @@ from core.mast.mast_accessory.mast_accessory import MastAccessory
 from core.pole.normal_section_processor import NormalSectionProcessor
 from core.pole.tunnel_section_processor import TunnelSectionProcessor
 from enums.section_type import AIRSECTION_SINGLE, SectionType
-from utils.math_util import calculate_offset_point, interpolate_cached
+from core.alignment.alignment import as_alignment
 
 READ_ONLY_EQUIPMENT_TYPES = ('흐름방지장치', '봉강지선')
 KIND_TEXT = {'mast': '기둥', 'base': '기초', 'acc': '밴드/부속', 'br': '브래킷', 'fit': '피팅', 'eq': '장비'}
@@ -275,8 +275,7 @@ def set_gauge(runner, pole, gauge, alignment):
         obj.offset = (new_x, y)
         moved += 1
     pole.gauge = gauge
-    coord, _, bearing = interpolate_cached(alignment, pole.pos)
-    pole.coord = calculate_offset_point(bearing, coord, gauge)
+    pole.coord = as_alignment(alignment).offset_point(pole.pos, gauge)
 
     notices = []
     if any(e.type in GAUGE_ANGLE_EQUIPMENT_TYPES for e in pole.equipments):

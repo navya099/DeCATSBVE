@@ -110,3 +110,30 @@ def test_route_not_starting_at_zero(tmp_path):
         for pos, _ in r.airjoint_list:
             assert min(pos % 1600, 1600 - pos % 1600) <= 100 + 5 * 60
     assert results['base'] == results['shifted']  # 같은 상대 위치·곡선·캔트·구배·구조물
+
+
+def test_normalize_converts_legacy_list_alignments(tmp_path):
+    """구버전 .dat: 선형이 리스트로 저장돼 있어도 불러오면 Alignment 로 바뀌고 결과가 같음"""
+    from core.model_rebuilder import normalize, rebuild
+    case = os.path.join(ROOT, 'tests', 'regression_cases', 'synthetic_double_rail_150', 'case.json')
+    r = headless.build_runner(headless.load_config(case))
+    with contextlib.redirect_stdout(io.StringIO()):
+        r.run()
+    expected = {}
+    headless.write_outputs(r, str(tmp_path / 'a'), '')
+    for f in ('main_pole.txt', 'main_wire.txt', 'sub_pole.txt', 'sub_wire.txt'):
+        expected[f] = (tmp_path / 'a' / f).read_text(encoding='utf-8')
+    # 구버전 형태로 되돌림: 본선·상선이 리스트, 트랙별 사전이 같은 리스트를 가리킴
+    main, sub = list(r.polyline_with_sta), list(r.offset_line_with_25)
+    r.polyline_with_sta, r.offset_line_with_25 = main, sub
+    r.alignment_by_track = {'main': main, 'sub': sub}
+    r.alignment = None
+    normalize(r)
+    assert isinstance(r.polyline_with_sta, Alignment) and isinstance(r.offset_line_with_25, Alignment)
+    assert r.alignment_by_track['main'] is r.polyline_with_sta and r.alignment_by_track['sub'] is r.offset_line_with_25
+    assert r.alignment is r.polyline_with_sta and r.polyline_with_sta.curve(512) == (600.0, 0.08)
+    with contextlib.redirect_stdout(io.StringIO()):
+        rebuild(r)
+    headless.write_outputs(r, str(tmp_path / 'b'), '')
+    for f, text in expected.items():
+        assert (tmp_path / 'b' / f).read_text(encoding='utf-8') == text

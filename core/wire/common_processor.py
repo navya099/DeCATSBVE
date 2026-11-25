@@ -1,5 +1,6 @@
 from core.wire.singlewire import SingleWire
-from utils.math_util import calculate_curve_angle, calculate_slope
+from core.alignment.alignment import as_alignment
+from utils.math_util import calculate_slope
 
 
 class CommonWireProcessor:
@@ -26,8 +27,7 @@ class CommonWireProcessor:
         x1, y1 = start
         x2, y2 = end
         currentspan = next_pos - pos
-        adjusted_angle = calculate_curve_angle(polyline_with_sta, pos, next_pos,
-                                               x1, x2)
+        adjusted_angle = as_alignment(polyline_with_sta).wire_angle(pos, next_pos, x1, x2)
         topdown_angle = calculate_slope(current_z + y1,next_z + y2, currentspan) - pitch_angle
 
         return SingleWire(index=index, offset=start,end_point=end,adjusted_angle=adjusted_angle,topdown_angle=topdown_angle, label=label)

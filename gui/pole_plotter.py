@@ -10,7 +10,7 @@ from matplotlib.collections import LineCollection
 
 from core.model_rebuilder import alignment_for, rebuild
 from event.events import MODEL_CHANGED, POLE_SELECTED, POLES_SELECTED
-from utils.math_util import interpolate_cached, calculate_offset_point
+from core.alignment.alignment import as_alignment
 from xref_module.dxf_controller.dxf_controller import DXFController
 from xref_module.preview.preview_sevice import PreviewService
 from xref_module.preview.preview_viewer import PreviewViewer
@@ -263,9 +263,8 @@ class PlotPoleMap(tk.Frame):
             return
 
         # 본선/상선 선형으로 보간 좌표 계산
-        coord, _, v1 = interpolate_cached(alignment_for(self.runner, self.selected_epole.pole.track), new_pos)
-
-        pos_coord_with_offset = calculate_offset_point(v1, coord, self.selected_epole.pole.gauge)
+        alignment = as_alignment(alignment_for(self.runner, self.selected_epole.pole.track))
+        pos_coord_with_offset = alignment.offset_point(new_pos, self.selected_epole.pole.gauge)
 
         # 최종 반영
         with Transaction(

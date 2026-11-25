@@ -7,7 +7,7 @@ from core.mast.mastdata import Mast
 from core.pole.normal_section_processor import NormalSectionProcessor
 from core.pole.poledata import PoleDATA
 from core.pole.tunnel_section_processor import TunnelSectionProcessor
-from utils.math_util import calculate_curve_angle
+from core.alignment.alignment import as_alignment
 from enums.section_type import SectionType
 
 
@@ -29,7 +29,7 @@ class AirjointBracketAdder:
             x1, y1 = f_start_coord['x'], f_start_coord['y']
             if pole.side == -1:
                 x1 *= -1
-            start_angle = calculate_curve_angle(polyline_with_sta, pole.pos, pole.next_pos, pole.gauge, x1)
+            start_angle = as_alignment(polyline_with_sta).wire_angle(pole.pos, pole.next_pos, pole.gauge, x1)
             en = self.idxlib.get_name(1247)
             pole.equipments.append(EquipmentDATA(name=en, index=1247, offset=(pole.gauge,0),rotation=start_angle, type='장력장치'))
             if pole.structure != '터널':
@@ -61,7 +61,7 @@ class AirjointBracketAdder:
             x5, y5 = self.prosc.get_airjoint_offset('F형_끝').get('x'), self.prosc.get_airjoint_offset('F형_끝').get('y')
             if pole.side == 1:
                 x5 *= -1
-            end_angle = calculate_curve_angle(polyline_with_sta, pole.pos, pole.next_pos, x5, pole.next_gauge)
+            end_angle = as_alignment(polyline_with_sta).wire_angle(pole.pos, pole.next_pos, x5, pole.next_gauge)
             pole.equipments.append(EquipmentDATA(name=en, index=1247, offset=(pole.gauge,0),rotation=180 + end_angle, type='장력장치'))
             if pole.structure != '터널':
                 jiseon = self.idxlib.get_name(674)

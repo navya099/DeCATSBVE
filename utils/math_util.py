@@ -1,26 +1,24 @@
+"""기하 계산 유틸
+
+순수 계산 함수(방위, 오프셋 좌표, 구배 각도, 편위 등)는 여기에 있다.
+선형(측점) 기준 계산은 core.alignment.alignment.Alignment 의 메서드로 옮겼고, 아래 같은 이름의 함수
+(interpolate_cached, interpolate_coordinates, get_elevation_pos, calculate_curve_angle, offset_polyline)는
+Alignment 로 위임하는 호환용이다. [(측점, x, y, z)] 리스트를 넘겨도 동작한다.
+"""
 import math
 from functools import lru_cache
 
-# 전역 캐시: 선형(polyline) 객체별로 분리해서 저장한다.
-# 측점(pos)만 키로 쓰면 본선/상선처럼 서로 다른 선형이 같은 측점 값을 공유해버리므로
-# id(polyline) 를 함께 키로 사용한다. 원본 polyline 참조를 함께 보관해 id 재사용을 막는다.
-elevation_cache = {}
-interpolation_cache = {}
 
 
-def _get_polyline_cache(cache, polyline):
-    key = id(polyline)
-    entry = cache.get(key)
-    if entry is None or entry[0] is not polyline:
-        entry = (polyline, {})
-        cache[key] = entry
-    return entry[1]
+def _alignment(polyline):
+    from core.alignment.alignment import as_alignment
+    return as_alignment(polyline)
 
 
 def clear_geometry_caches():
-    """선형 데이터가 바뀌었을 때(재실행 등) 보간/고도 캐시를 비운다."""
-    elevation_cache.clear()
-    interpolation_cache.clear()
+    """호환용: 캐시는 이제 선형 객체마다 있어 전역으로 비울 것이 없다 (리스트 감싸기 캐시만 비움)"""
+    from core.alignment import alignment
+    alignment._LIST_WRAPPERS.clear()
 
 @lru_cache(maxsize=None)
 def calculate_bearing(x1, y1, x2, y2):
@@ -29,26 +27,10 @@ def calculate_bearing(x1, y1, x2, y2):
     dy = y2 - y1
     return math.degrees(math.atan2(dy, dx))
 
-def calculate_curve_angle(polyline_with_sta, pos, next_pos, stagger1, stagger2 ,start=True):
-    # 캐싱된 보간 사용
-    point_a, P_A, vector_a = interpolate_cached(polyline_with_sta, pos)
-    point_b, P_B, vector_b = interpolate_cached(polyline_with_sta, next_pos)
+def calculate_curve_angle(polyline_with_sta, pos, next_pos, stagger1, stagger2, start=True):
+    """호환용 → Alignment.wire_angle"""
+    return _alignment(polyline_with_sta).wire_angle(pos, next_pos, stagger1, stagger2, start=start)
 
-    if point_a and point_b:
-        offset_point_a = calculate_offset_point(vector_a, point_a, stagger1)
-        offset_point_b = calculate_offset_point(vector_b, point_b, stagger2)
-
-        # bearing 계산 (캐싱 적용)
-        a_b_angle = calculate_bearing(offset_point_a[0], offset_point_a[1],
-                                      offset_point_b[0], offset_point_b[1])
-        if start:
-            return vector_a - a_b_angle
-        else:
-            return a_b_angle - vector_b
-
-    return 0.0
-
-# offset 좌표 반환
 def calculate_offset_point(vector, point_a, offset_distance):
     if offset_distance > 0:  # 우측 오프셋
         vector -= 90
@@ -58,62 +40,19 @@ def calculate_offset_point(vector, point_a, offset_distance):
     return offset_a_xy
 
 def interpolate_cached(polyline_with_sta, pos):
-    cache = _get_polyline_cache(interpolation_cache, polyline_with_sta)
-    if pos not in cache:
-        cache[pos] = interpolate_coordinates(polyline_with_sta, pos)
-    return cache[pos]
+    """호환용 → Alignment.locate ((x, y, z), 블록 시작점, 방위)"""
+    return _alignment(polyline_with_sta).locate(pos)
 
 def interpolate_coordinates(polyline, target_sta):
-    """
-    주어진 폴리선 데이터에서 특정 sta 값에 대한 좌표를 선형 보간하여 반환.
-
-    :param polyline: [(sta, x, y, z), ...] 형식의 리스트
-    :param target_sta: 찾고자 하는 sta 값
-    :return: (x, y, z) 좌표 튜플
-    """
-    # 정렬된 리스트를 가정하고, 적절한 두 점을 찾아 선형 보간 수행
-    for i in range(len(polyline) - 1):
-        sta1, x1, y1, z1 = polyline[i]
-        sta2, x2, y2, z2 = polyline[i + 1]
-        # target_sta가 두 점 사이에 있는 경우 보간 수행 (마지막 점 포함)
-        is_last = i == len(polyline) - 2
-        if sta1 <= target_sta < sta2 or (is_last and target_sta == sta2):
-            v1 = calculate_bearing(x1, y1, x2, y2)
-            t = target_sta - sta1
-            x, y = calculate_destination_coordinates(x1, y1, v1, t)
-            ratio = t / (sta2 - sta1) if sta2 != sta1 else 0.0
-            z = z1 + ratio * (z2 - z1)
-            return (x, y, z), (x1, y1, z1), v1
-
-    raise ValueError(f"target_sta {target_sta}가 polyline 범위({polyline[0][0]} ~ {polyline[-1][0]})를 벗어났습니다.")
+    """호환용 → Alignment.locate"""
+    return _alignment(polyline).locate(target_sta)
 
 def offset_polyline(polyline_with_sta, distance):
-    """선형을 블록 진행방향의 수직으로 distance 만큼 평행이동한 선형을 반환.
-
-    BVE 의 Rail x 오프셋과 같은 방식이다 (양수 = 진행방향 우측).
-    측점(sta)과 고도(z)는 그대로 유지하므로 블록 단위 측점이 원본과 1:1 로 대응한다.
-    각 점의 방향은 그 점에서 다음 점으로 향하는 방위(마지막 점은 직전 구간)를 사용한다.
-
-    :param polyline_with_sta: [(sta, x, y, z), ...]
-    :param distance: 오프셋 거리 (m, 우측 +)
-    :return: [(sta, x, y, z), ...]
-    """
-    n = len(polyline_with_sta)
-    if n < 2:
-        raise ValueError("오프셋하려면 선형 점이 2개 이상 필요합니다.")
-    result = []
-    for i, (sta, x, y, z) in enumerate(polyline_with_sta):
-        if i < n - 1:
-            _, x1, y1, _ = polyline_with_sta[i]
-            _, x2, y2, _ = polyline_with_sta[i + 1]
-        else:
-            _, x1, y1, _ = polyline_with_sta[i - 1]
-            _, x2, y2, _ = polyline_with_sta[i]
-        theta = math.atan2(y2 - y1, x2 - x1)
-        result.append((sta, x + distance * math.sin(theta), y - distance * math.cos(theta), z))
-    derived = getattr(polyline_with_sta, 'derived', None)  # Alignment 이면 곡선·구배를 공유하는 Alignment 로
-    return derived(result) if derived else result
-
+    """호환용 → Alignment.offset (리스트를 넘기면 리스트 반환)"""
+    from core.alignment.alignment import Alignment, offset_points
+    if isinstance(polyline_with_sta, Alignment):
+        return polyline_with_sta.offset(distance)
+    return offset_points(polyline_with_sta, distance)
 
 def calculate_destination_coordinates(x1, y1, bearing, distance):
     # Calculate the destination coordinates given a starting point, bearing, and distance in Cartesian coordinates
@@ -123,26 +62,8 @@ def calculate_destination_coordinates(x1, y1, bearing, distance):
     return x2, y2
 
 def get_elevation_pos(pos, polyline_with_sta):
-    cache = _get_polyline_cache(elevation_cache, polyline_with_sta)
-    if pos in cache:
-        return cache[pos]
-
-    # 범위 체크
-    if pos < polyline_with_sta[0][0] or pos > polyline_with_sta[-1][0]:
-        raise ValueError(f"pos {pos}가 polyline 범위({polyline_with_sta[0][0]} ~ {polyline_with_sta[-1][0]})를 벗어났습니다.")
-
-    for i in range(len(polyline_with_sta) - 1):
-        sta1, x1, y1, z1 = polyline_with_sta[i]
-        sta2, x2, y2, z2 = polyline_with_sta[i + 1]
-        L = sta2 - sta1
-        L_new = pos - sta1
-
-        if sta1 <= pos <= sta2:
-            new_z = calculate_height_at_new_distance(z1, z2, L, L_new)
-            cache[pos] = new_z
-            return new_z
-
-    raise ValueError(f"pos {pos}에 대한 고도 값을 찾을 수 없습니다.")
+    """호환용 → Alignment.elevation"""
+    return _alignment(polyline_with_sta).elevation(pos)
 
 def calculate_height_at_new_distance(h1, h2, L, L_new):
     """주어진 거리 L에서의 높이 변화율을 기반으로 새로운 거리 L_new에서의 높이를 계산"""
