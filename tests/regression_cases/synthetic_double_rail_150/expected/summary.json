@@ -1,0 +1,17 @@
+{
+  "tracks": {
+    "main": {
+      "poles": 65,
+      "spans": 64,
+      "first_pole": 0,
+      "last_pole": 2910
+    },
+    "sub": {
+      "poles": 61,
+      "spans": 60,
+      "first_pole": 0,
+      "last_pole": 2710
+    }
+  },
+  "error_count": 0
+}

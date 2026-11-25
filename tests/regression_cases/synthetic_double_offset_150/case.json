@@ -1,0 +1,10 @@
+{
+  "description": "합성 노선 복선 150km/h: 상선 일정 간격 4.4m 오프셋",
+  "coord": "../synthetic_route/bve_coordinates.txt",
+  "curve": "../synthetic_route/curve_info.txt",
+  "pitch": "../synthetic_route/pitch_info.txt",
+  "structure": "../synthetic_route/structure.xlsx",
+  "speed": 150, "mode": "double", "main_direction": "L", "track_distance": 4.4,
+  "start": 0, "end": 3000,
+  "verify": {"main_max_cm": 0.1}
+}

@@ -1,0 +1,11 @@
+{
+  "description": "합성 노선 복선 150km/h: 상선 rail_info Rail 1 (4.4→8.8m 간격 전이, 2775m RailEnd)",
+  "coord": "../synthetic_route/bve_coordinates.txt",
+  "curve": "../synthetic_route/curve_info.txt",
+  "pitch": "../synthetic_route/pitch_info.txt",
+  "structure": "../synthetic_route/structure.xlsx",
+  "rail_info": "../synthetic_route/rail_info.txt",
+  "speed": 150, "mode": "double", "main_direction": "L", "track_distance": 4.4, "sub_rail": 1,
+  "start": 0, "end": 3000,
+  "verify": {"main_max_cm": 0.1, "sub_max_cm": 0.1}
+}
