@@ -384,7 +384,26 @@ if cw(p.pos).end_point != (0.33, 5.31):
 select('main', p.pos)      # 편집기가 선택을 따라옴
 app.update()
 we.label_var.set('부급전선')
-we.index_var.set(1239)
+# 오브젝트 인덱스는 라이브러리 검색으로 고름 (1239 가 있으면 그 이름으로 검색)
+want_name = runner.idxlib.get_name(1239) or str(runner.idxlib.df.iloc[0]['파일명'])
+we.obj_search_var.set(want_name); we.search_object(); app.update()
+choices = list(we.obj_combo.cget('values'))
+if not choices:
+    failures.append('전선 편집기 오브젝트 검색 결과 없음')
+else:
+    we.obj_search_var.set(choices[0]); we._on_object_pick(); app.update()
+    picked_index = we.index_var.get()
+    if runner.idxlib.get_name(picked_index) is None or not we.obj_name_var.get().startswith('오브젝트:'):
+        failures.append('전선 편집기 오브젝트 검색 선택이 인덱스에 반영되지 않음')
+    print(f'     전선 추가 오브젝트: {we.obj_name_var.get()} [{picked_index}]')
+# 라이브러리에 없는 인덱스는 거부
+we.index_var.set(987654); app.update()
+n_added_before = len([i for i in we.tree.get_children() if i.startswith('added:')])
+we.add_wire(); app.update()
+if len([i for i in we.tree.get_children() if i.startswith('added:')]) != n_added_before:
+    failures.append('라이브러리에 없는 인덱스로 전선이 추가됨')
+if choices:
+    we.index_var.set(picked_index)
 we.sx_var.set(-2.5); we.sy_var.set(7.0); we.ex_var.set(-2.5); we.ey_var.set(7.0)
 we.add_wire()
 check('전선 추가')
