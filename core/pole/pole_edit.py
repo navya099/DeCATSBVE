@@ -25,10 +25,10 @@ from core.equipment.equipment_data import EquipmentDATA
 from core.mast.base.mast_base import MastBase
 from core.mast.mast_accessory.mast_accessory import MastAccessory
 from core.pole.normal_section_processor import NormalSectionProcessor
+from core.pole.pole_geometry import place_on_alignment, track_lists
 from core.pole.tunnel_section_processor import TunnelSectionProcessor
 from enums.component_role import ComponentRole, infer_role, known_indices
 from enums.section_type import AIRSECTION_SINGLE, SectionType
-from core.alignment.alignment import as_alignment
 
 READ_ONLY_EQUIPMENT_TYPES = ('흐름방지장치', '봉강지선')
 KIND_TEXT = {'mast': '기둥', 'base': '기초', 'acc': '밴드/부속', 'br': '브래킷', 'fit': '피팅', 'eq': '장비'}
@@ -362,7 +362,7 @@ def set_gauge(runner, pole, gauge, alignment):
         obj.offset = (new_x, y)
         moved += 1
     pole.gauge = gauge
-    pole.coord = as_alignment(alignment).offset_point(pole.pos, gauge)
+    place_on_alignment(pole, alignment, *track_lists(runner, pole.track))
 
     notices = []
     if any(e.type in GAUGE_ANGLE_EQUIPMENT_TYPES for e in pole.equipments):
@@ -407,7 +407,6 @@ def move_pole(runner, pole, new_pos, alignment):
     구조물(토공/교량/터널)이 바뀌면 그 구조물의 건식게이지로 구성품을 자동 재생성한다.
     반환: 안내 문구 목록"""
     from core.alignment.alignment import as_alignment
-    from core.alignment.define_funtion import iscurve, isslope
     from core.structure.define_structure import isbridge_tunnel
 
     new_pos = float(new_pos)
@@ -435,19 +434,17 @@ def move_pole(runner, pole, new_pos, alignment):
     old_structure = pole.structure
     pole.pos = new_pos
     pole.structure = new_structure
-    _, pole.radius, pole.cant = iscurve(new_pos, runner.curvelist)
-    _, pole.pitch = isslope(new_pos, runner.pitchlist)
-    pole.z = al.elevation(new_pos)
+    curves, pitches = track_lists(runner, pole.track)
     if new_structure != old_structure:
         sign = -1 if pole.gauge < 0 else 1
         pole.gauge = runner.dataprocessor.get_pole_gauge(new_structure) * sign
         regenerate(runner, pole, al)
         notices.append(f'구조물이 {old_structure} → {new_structure} 로 바뀌어 건식게이지({pole.gauge})와 '
                        '구성품을 자동으로 다시 만들었습니다.')
-    pole.coord = al.offset_point(new_pos, pole.gauge)
+    place_on_alignment(pole, al, curves, pitches)   # 좌표·계획고·곡선·구배 (게이지가 바뀐 뒤)
     # 앞뒤 전주와의 연결(next_pos·span 등)을 바로 맞춤 (전체 재계산 전에도 데이터가 일관되도록)
     from core.pole.pole_updator import PoleUpdator
-    PoleUpdator.update_all(poles[max(0, idx - 1):idx + 2], al)
+    PoleUpdator.update_all(poles, al)   # 트랙 전체를 다시 이음 (일부만 넘기면 끝 전주 연결이 끊김)
     if prev_pole is not None and prev_pole.next_pos == pole.pos:
         notices += filter(None, [span_limit_notice(runner, prev_pole.pos, pole.pos, '앞')])
     if next_pole is not None and pole.next_pos == next_pole.pos:
@@ -530,9 +527,10 @@ def add_pole(runner, track, pos, post_number, gauge, base_type, alignment):
     pole = ManualPoleProcessor.create_pole(al, runner.dataprocessor, runner.idxlib, runner.curvelist,
                                            runner.pitchlist, runner.structure_list, pos, post_number, gauge,
                                            None, base_type, track, side)
+    place_on_alignment(pole, al, *track_lists(runner, track))   # 트랙 곡선·구배표로 (재계산과 같은 값)
     regenerate(runner, pole, al)   # 구조물(터널 등)에 맞는 자동 구성
     poles.insert(idx, pole)
-    PoleUpdator.update_all(poles[max(0, idx - 1):idx + 2], al)
+    PoleUpdator.update_all(poles, al)   # 트랙 전체를 다시 이음 (일부만 넘기면 끝 전주 연결이 끊김)
     notices = []
     if prev_pole is not None:
         notices += filter(None, [span_limit_notice(runner, prev_pole.pos, pos, '앞')])

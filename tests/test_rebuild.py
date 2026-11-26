@@ -4,7 +4,6 @@ import glob
 import io
 import os
 import sys
-import types
 
 import pytest
 
@@ -159,9 +158,12 @@ def test_pole_updator_does_not_link_across_rail_gap():
     alignment = RailAlignment([(i * 25, i * 25.0, 0.0, 0.0) for i in range(13)],
                               visible_blocks={0.0, 25.0, 50.0, 75.0, 200.0, 225.0, 250.0})
 
+    from core.pole.poledata import PoleDATA
+
     def pole(pos):
-        return types.SimpleNamespace(pos=pos, next_pos=None, span=None, gauge=3, structure='토공', z=0,
-                                     base_type='I', side=-1)
+        return PoleDATA(post_number=str(pos), pos=pos, next_pos=None, span=None, gauge=3, next_gauge=None,
+                        structure='토공', next_structure=None, radius=0, cant=0, pitch=0, section=None, z=0,
+                        next_z=None, mast=None, base_type='I', side=-1)
 
     poles = [pole(0), pole(50), pole(200), pole(250)]
     poles[1].next_pos, poles[1].span = 100, 50  # 생성 시점의 경간 (단절 직전)
@@ -171,6 +173,10 @@ def test_pole_updator_does_not_link_across_rail_gap():
     assert (poles[2].next_pos, poles[2].span) == (250, 50)
     PoleUpdator.update_all(poles)  # 표시 정보 없으면 기존처럼 연결
     assert poles[1].next_pos == 200
+    # 다음 전주 값은 복사본이 아니라 이은 전주에서 바로: 다음 전주를 고치면 즉시 반영 (재계산 전에도)
+    poles[2].gauge, poles[2].structure, poles[2].pos = -2.15, '터널', 210
+    assert (poles[1].next_gauge, poles[1].next_structure, poles[1].next_pos, poles[1].span) == (-2.15, '터널', 210, 160)
+    assert poles[3].next_pole is None and poles[3].next_pos is None      # 마지막 전주: 잇지 않음 → 생성 때 값
 
 
 def test_normalize_legacy_poles():
