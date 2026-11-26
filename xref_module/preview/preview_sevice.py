@@ -1,4 +1,3 @@
-import os
 
 from xref_module.filefinder import FileLocator
 from xref_module.path_resolver import PathResolver
@@ -10,7 +9,8 @@ from xref_module.preview.preview_result import PreviewBuildResult
 from xref_module.vector3.vector3 import Vector3
 import math
 
-# 미리보기 배경 오브젝트: BVE Object 폴더(사용자 설정) 기준 상대 경로. 파일이 없으면 건너뛰고 누락 목록에 표시
+# 미리보기 배경 오브젝트: BVE Object 폴더(사용자 설정) 기준 상대 경로.
+# Object 폴더에 없으면 저장소 assets/preview 의 같은 이름 파일, 그것도 없으면 건너뛰고 누락 목록에 표시
 TRACK_OBJECT = '철도표준라이브러리/궤도/표준단면/자갈도상/일반철도/5M레일_신선_전차선X.csv'
 CLEARANCE_OBJECT = 'temp/건축한계.csv'
 CENTERLINE_OBJECT = 'temp/선로중심선.csv'
@@ -26,27 +26,50 @@ STRUCTURE_OBJECTS = {
 
 
 class PreviewService:
-    def __init__(self):
-        self._locator = None
-        self._locator_root = None
+    def __init__(self, idxlib=None):
+        self.idxlib = idxlib          # 인덱스 → 경로 (정확한 오브젝트 파일, 같은 이름 파일이 여러 폴더에 있을 때)
+        self._locators = {}
 
-    @property
-    def locator(self):
-        """전철전력 라이브러리 검색기 (Object 폴더 설정이 바뀌면 다시 만듦)"""
-        root = PathResolver.library_root()
-        if self._locator is None or self._locator_root != root:
-            self._locator, self._locator_root = FileLocator(root), root
-        return self._locator
+    def locator(self, root):
+        """이름 검색기 (폴더별로 캐시)"""
+        if root not in self._locators:
+            self._locators[root] = FileLocator(root)
+        return self._locators[root]
+
+    @staticmethod
+    def _missing(missing, name):
+        """찾지 못한 구성품 기록 ('null' = BVE 빈 오브젝트 자리는 제외)"""
+        if str(name).strip().lower() != 'null':
+            missing.append(name)
+
+    def find(self, name, index=None):
+        """구성품 오브젝트 파일:
+        1) 인덱스 라이브러리 경로 — BVE Object 폴더, 저장소 assets/preview/전철전력 (대소문자 무시)
+        2) 이름 검색 — Object 폴더의 전철전력 라이브러리, 저장소 assets/preview/전철전력"""
+        if index is not None and self.idxlib is not None and hasattr(self.idxlib, 'get_path_by_index'):
+            path = PathResolver.library_object(self.idxlib.get_path_by_index(index))
+            if path:
+                return path
+        if not name:
+            return None
+        for root in (PathResolver.library_root(), PathResolver.BUNDLED_LIBRARY):
+            path = self.locator(root).find(name)
+            if path:
+                return path
+        return None
 
     @staticmethod
     def _background(items, missing, relative, transform, category):
-        path = PathResolver.object_path(relative)
-        if os.path.exists(path):
+        """배경 오브젝트: Object 폴더에 있으면 그 파일(사용자 수정본), 없으면 저장소 assets/preview 파일"""
+        path = PathResolver.preview_object(relative)
+        if path is not None:
             items.append(PreviewItem(path=path, transform=transform, category=category))
         else:
-            missing.append(path)
+            missing.append(PathResolver.object_path(relative))
 
-    def build(self, pole, trackidx, distnace=4.3, direction=1, mode='single'):
+    def build(self, pole, trackidx, distnace=4.3, direction=1, mode='single', idxlib=None):
+        if idxlib is not None:
+            self.idxlib = idxlib
         items = []
         missing = []
         distnace *= direction
@@ -63,7 +86,7 @@ class PreviewService:
             mast = pole.mast
             if mast:
                 if mast.name:
-                    path = self.locator.find(mast.name)
+                    path = self.find(mast.name, mast.index)
                     if path:
                         items.append(
                             PreviewItem(
@@ -73,7 +96,7 @@ class PreviewService:
                             )
                         )
                     else:
-                        missing.append(mast.name)
+                        self._missing(missing, mast.name)
         except Exception as e:
             print(f"[Mast 처리 오류] {e}")
             missing.append("mast 처리 실패")
@@ -85,7 +108,7 @@ class PreviewService:
                 if mast.base:
                     base = mast.base
                     if base.name:
-                        path = self.locator.find(mast.base.name)
+                        path = self.find(mast.base.name, mast.base.index)
                         if path:
                             items.append(
                                 PreviewItem(
@@ -95,7 +118,7 @@ class PreviewService:
                                 )
                             )
                         else:
-                            missing.append(base.name)
+                            self._missing(missing, base.name)
         except Exception as e:
             print(f"[기초 처리 오류] {e}")
             missing.append("기초 처리 실패")
@@ -108,7 +131,7 @@ class PreviewService:
                     for ac in mast.accessories:
                         if ac:
                             if ac.name:
-                                path = self.locator.find(ac.name)
+                                path = self.find(ac.name, ac.index)
                                 if path:
                                     items.append(
                                         PreviewItem(
@@ -119,7 +142,7 @@ class PreviewService:
                                         )
                                     )
                                 else:
-                                    missing.append(ac.name)
+                                    self._missing(missing, ac.name)
         except Exception as e:
             print(f"[전주 악세서리 처리 오류] {e}")
             missing.append("악세서리 처리 실패")
@@ -129,7 +152,7 @@ class PreviewService:
             try:
                 if br:
                     if br.bracket_name:
-                        path = self.locator.find(br.bracket_name)
+                        path = self.find(br.bracket_name, br.index)
                         if path:
                             items.append(
                                 PreviewItem(
@@ -139,14 +162,14 @@ class PreviewService:
                                 )
                             )
                         else:
-                            missing.append(br.bracket_name)
+                            self._missing(missing, br.bracket_name)
 
                     # 브래킷 피팅류
                     for f in getattr(br, "fittings", []):
                         try:
                             if f:
                                 if f.label:
-                                    path = self.locator.find(f.label)
+                                    path = self.find(f.label, f.index)
                                     if path:
                                         items.append(
                                             PreviewItem(
@@ -156,7 +179,7 @@ class PreviewService:
                                             )
                                         )
                                     else:
-                                        missing.append(f.label)
+                                        self._missing(missing, f.label)
                         except Exception as e:
                             print(f"[Fitting 처리 오류] {e}")
                             missing.append("fitting 처리 실패")
@@ -176,7 +199,7 @@ class PreviewService:
             try:
                 if equip:
                     if equip.name:
-                        path = self.locator.find(equip.name)
+                        path = self.find(equip.name, equip.index)
                         if path:
                             items.append(
                                 PreviewItem(
@@ -186,7 +209,7 @@ class PreviewService:
                                 )
                             )
                         else:
-                            missing.append(equip.name)
+                            self._missing(missing, equip.name)
             except Exception as e:
                 print(f"[Equipment 처리 오류] {e}")
                 missing.append("equipment 처리 실패")
