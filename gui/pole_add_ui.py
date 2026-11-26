@@ -36,14 +36,29 @@ class PoleADDUI(tk.Toplevel):
         self.entry_base_type = ttk.Combobox(self, width=10, values=base_type_list, textvariable=self.entry_base_type_var)
         self.entry_base_type.grid(row=5, column=1, padx=5, pady=5)
 
-        ttk.Button(self, text="확인", command=self.destroy).grid(row=6, column=0, padx=5, pady=5)
+        self.result = None   # 확인을 눌렀을 때만 입력값 (취소·창 닫기면 None)
+        ttk.Button(self, text="확인", command=self.ok).grid(row=6, column=0, padx=5, pady=5)
         ttk.Button(self, text="취소", command=self.cancle).grid(row=6, column=1, padx=5, pady=5)
 
 
+    def ok(self):
+        try:
+            self.result = self._values()
+        except tk.TclError:   # 숫자 칸에 숫자가 아닌 값
+            from tkinter import messagebox
+            messagebox.showerror('전주 추가', '측점과 건식게이지는 숫자로 입력하세요.', parent=self)
+            return
+        self.destroy()
+
     def cancle(self):
+        self.result = None
         self.destroy()
 
     def comfirm(self):
+        """확인으로 닫았으면 입력값, 취소했으면 None"""
+        return self.result
+
+    def _values(self):
         return {
             "post_number": self.entry_post_number_var.get(),
             "pos": self.entry_pos_var.get(),

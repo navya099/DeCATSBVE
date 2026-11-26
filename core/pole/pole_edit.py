@@ -450,9 +450,82 @@ def span_limit_notice(runner, start_pos, end_pos, label=''):
             f'(설계속도 {speed}km/h, 곡선 반경·터널 기준).')
 
 
+def _section_containing(runner, track, pos, inclusive=True):
+    """pos 가 걸치는 에어조인트·에어섹션 구간 (inclusive=False 면 구간 시작·끝 전주 사이 안쪽만). 없으면 None"""
+    from core.section_edit import find_sections
+    for inst in find_sections(runner, track):
+        if inst.kind is not None and inst.kind.category == 'flowstop':
+            continue
+        lo, hi = inst.start_pos, inst.end_pos
+        if (lo <= pos <= hi) if inclusive else (lo < pos < hi):
+            return inst
+    return None
+
+
+def add_pole(runner, track, pos, post_number, gauge, base_type, alignment):
+    """일반개소 전주 추가 (구간은 구간 편집기에서). 검증 후에만 추가.
+    거부: 빈/중복 전주번호, 같은 측점 전주, 선형 범위 밖, 건식게이지 0, 기본 타입 오류,
+          에어조인트·에어섹션 구간 안쪽, 앞뒤로 생기는 경간이 경간표에 없음.
+    반환: (새 전주, 안내 문구 목록)"""
+    from core.alignment.alignment import as_alignment
+    from core.pole.manual_pole_processor import ManualPoleProcessor
+    from core.pole.pole_updator import PoleUpdator
+    from core.structure.define_structure import isbridge_tunnel
+
+    poles = runner.poledata.setdefault(track, [])
+    post_number = str(post_number).strip()
+    pos = float(pos)
+    pos = int(pos) if pos.is_integer() else pos
+    gauge = float(gauge)
+    base_type = str(base_type).strip().upper()
+    if not post_number:
+        raise ValueError('전주번호를 입력하세요.')
+    if any(p.post_number == post_number for p in poles):
+        raise ValueError(f'전주번호 {post_number} 가 이미 있습니다.')
+    if any(float(p.pos) == float(pos) for p in poles):
+        raise ValueError(f'{pos}m 에 이미 전주가 있습니다.')
+    if gauge == 0:
+        raise ValueError('건식게이지는 0 이 될 수 없습니다 (좌측 음수, 우측 양수).')
+    if base_type not in BASE_TYPES:
+        raise ValueError(f'기본 타입은 {", ".join(BASE_TYPES)} 중 하나입니다.')
+    al = as_alignment(alignment)
+    if not (al.start <= pos <= al.end):
+        raise ValueError(f'선형 범위({al.start:g}~{al.end:g}m) 밖입니다.')
+    inside = _section_containing(runner, track, pos, inclusive=False)
+    if inside is not None:
+        raise ValueError(f'{inside.label} 구간({inside.start_pos}~{inside.end_pos}m) 안에는 전주를 추가할 수 없습니다.')
+    idx = next((i for i, p in enumerate(poles) if p.pos > pos), len(poles))
+    prev_pole = poles[idx - 1] if idx > 0 else None
+    next_pole = poles[idx] if idx < len(poles) else None
+    new_structure = isbridge_tunnel(pos, runner.structure_list)
+    # 새로 생기는 경간(앞 전주→새 전주, 새 전주→뒤 전주). 레일이 끊긴 사이에 넣으면 연결하지 않으므로 검사 생략
+    linked = prev_pole is None or next_pole is None or prev_pole.next_pos == next_pole.pos
+    if prev_pole is not None and linked:
+        _check_span(runner, pos - prev_pole.pos, prev_pole.structure, '앞')
+    if next_pole is not None and linked:
+        _check_span(runner, next_pole.pos - pos, new_structure, '뒤')
+
+    side = -1 if gauge < 0 else 1
+    pole = ManualPoleProcessor.create_pole(al, runner.dataprocessor, runner.idxlib, runner.curvelist,
+                                           runner.pitchlist, runner.structure_list, pos, post_number, gauge,
+                                           None, base_type, track, side)
+    regenerate(runner, pole, al)   # 구조물(터널 등)에 맞는 자동 구성
+    poles.insert(idx, pole)
+    PoleUpdator.update_all(poles[max(0, idx - 1):idx + 2], al)
+    notices = []
+    if prev_pole is not None:
+        notices += filter(None, [span_limit_notice(runner, prev_pole.pos, pos, '앞')])
+    if next_pole is not None:
+        notices += filter(None, [span_limit_notice(runner, pos, next_pole.pos, '뒤')])
+    return pole, notices
+
+
 def delete_pole(runner, pole):
-    """전주 삭제. 앞뒤 전주가 이어지는 새 경간이 경간표에 있어야 함. 반환: 안내 문구 목록"""
+    """전주 삭제 (일반개소만). 앞뒤 전주가 이어지는 새 경간이 경간표에 있어야 함. 반환: 안내 문구 목록"""
     poles, idx = _track_poles(runner, pole)
+    if pole.section is not None:
+        raise ValueError(f'{pole.post_number}: {pole.section} 전주는 삭제할 수 없습니다. '
+                         "'구간 편집'에서 구간을 삭제한 뒤 삭제하세요 (구간이 반쪽만 남음).")
     notices = []
     if 0 < idx < len(poles) - 1:
         prev_pole, next_pole = poles[idx - 1], poles[idx + 1]
@@ -480,3 +553,87 @@ def set_base_type(runner, pole, base_type, alignment):
     pole.base_type = base_type
     regenerate(runner, pole, alignment)
     return ['기본 타입이 바뀌어 구성품을 자동으로 다시 만들었습니다 (직접 편집한 구성품은 사라짐).']
+
+
+def load_pole_table(runner, sheets):
+    """전주 배치표(엑셀 시트별 DataFrame: 전주번호·측점·기본타입·구간)로 트랙 전주를 통째로 바꾼다.
+
+    - 시트 이름 = 트랙('main'/'sub'), 측점 순으로 정렬. 측점·전주번호 중복, 기본 타입 오류, 없는 트랙은 거부
+    - 건식게이지: 구조물 게이지, 방향은 트랙 방향(터널은 터널 전주 방향)
+    - 구간 전주는 그 구간 종류의 자동 구성(에어조인트·에어섹션 브래킷 등)으로 만든다 (이전: 모두 일반개소 구성품)
+    - 구간 값 순서가 등록된 종류와 맞지 않으면 불완전 구간으로 안내 (불러오기는 진행)
+    실패하면 runner.poledata 는 그대로. 반환: 안내 문구 목록"""
+    from core.alignment.alignment import as_alignment
+    from core.model_rebuilder import alignment_for
+    from core.pole.manual_pole_processor import ManualPoleProcessor
+    from core.pole.pole_updator import PoleUpdator
+    from core.section_edit import find_sections
+    from core.structure.define_structure import isbridge_tunnel
+    from enums.section_type import FlowStop
+
+    required = ('전주번호', '측점', '기본타입', '구간')
+    rows_by_track = {}
+    for track, df in sheets.items():
+        if track not in ('main', 'sub'):
+            raise ValueError(f"시트 이름은 트랙 이름(main / sub)이어야 합니다: '{track}'")
+        if track == 'sub' and getattr(runner, 'track_mode', None) != 'double':
+            raise ValueError("단선 모드에서는 'sub' 시트를 불러올 수 없습니다.")
+        missing = [c for c in required if c not in df.columns]
+        if missing:
+            raise ValueError(f"[{track}] 열이 없습니다: {', '.join(missing)}")
+        rows = []
+        for i, row in df.iterrows():
+            where = f'[{track}] {i + 2}행'
+            try:
+                pos = float(row['측점'])
+            except (TypeError, ValueError):
+                raise ValueError(f"{where}: 측점이 숫자가 아닙니다: {row['측점']}") from None
+            pos = int(pos) if pos.is_integer() else pos
+            base_type = str(row['기본타입']).strip().upper()
+            if base_type not in BASE_TYPES:
+                raise ValueError(f"{where}: 기본 타입은 {', '.join(BASE_TYPES)} 중 하나입니다: {row['기본타입']}")
+            raw_section = row['구간']
+            section = SectionType.parse(raw_section)
+            if section is None and FlowStop.parse(raw_section) is None and str(raw_section).strip() not in (
+                    '', 'None', 'nan', '일반개소'):
+                raise ValueError(f'{where}: 알 수 없는 구간 값입니다: {raw_section}')
+            rows.append((pos, str(row['전주번호']).strip(), base_type, section))
+        rows.sort(key=lambda r: float(r[0]))
+        for kind, col in (('측점', 0), ('전주번호', 1)):
+            seen = set()
+            for r in rows:
+                if r[col] in seen:
+                    raise ValueError(f'[{track}] {kind} {r[col]} 이(가) 중복됩니다.')
+                seen.add(r[col])
+        rows_by_track[track] = rows
+
+    backup = dict(runner.poledata or {})
+    try:
+        if runner.poledata is None:
+            runner.poledata = {}
+        for track, rows in rows_by_track.items():
+            al = as_alignment(alignment_for(runner, track))
+            poles = []
+            for pos, post_number, base_type, section in rows:
+                structure = isbridge_tunnel(pos, runner.structure_list)
+                direction = (runner.tunnel_direction if structure == '터널' else runner.track_direction).get(track)
+                side = -1 if direction == -1 else 1
+                gauge = runner.dataprocessor.get_pole_gauge(structure) * side
+                poles.append(ManualPoleProcessor.create_pole(al, runner.dataprocessor, runner.idxlib,
+                                                             runner.curvelist, runner.pitchlist,
+                                                             runner.structure_list, pos, post_number, gauge,
+                                                             section, base_type, track, side))
+            runner.poledata[track] = poles
+            PoleUpdator.update_all(poles, al)
+            for pole in poles:                      # 구간 종류에 맞는 구성 (앞뒤 전주 연결 뒤)
+                regenerate(runner, pole, al)
+    except Exception:
+        runner.poledata = backup
+        raise
+    notices = []
+    for track in rows_by_track:
+        for inst in find_sections(runner, track):
+            if inst.kind is None:
+                notices.append(f'[{track}] 불완전 구간 {inst.start_pos}~{inst.end_pos}m: 구간 값 순서가 등록된 '
+                               '종류와 맞지 않습니다 (구간 편집기에서 삭제 후 다시 추가하세요).')
+    return notices

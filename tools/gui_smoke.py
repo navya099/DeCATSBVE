@@ -165,6 +165,30 @@ select('main', last.pos)
 ed.delete_pole()
 assert runner.poledata['main'][-1] is not last
 check(f'마지막 전주 삭제 {last.pos}')
+# 구간(에어조인트 등) 전주는 테이블에서 삭제 불가 (구간이 반쪽만 남음)
+aj_pole = next((p for p in runner.poledata['main'] if p.section is not None), None)
+if aj_pole is not None:
+    n_before = len(runner.poledata['main'])
+    select('main', aj_pole.pos)
+    ed.delete_pole()
+    if len(runner.poledata['main']) != n_before:
+        failures.append('구간 전주 삭제가 거부되지 않음')
+    check(f'구간 전주 삭제 거부 {aj_pole.pos}')
+# 전주 추가 창: 취소하면 추가되지 않음 (이전: 빈 전주가 추가됨)
+from gui import pole_add_ui  # noqa: E402
+_orig_add_ui = pole_add_ui.PoleADDUI
+import gui.maineditor as _me  # noqa: E402
+class _CancelUI(_orig_add_ui):
+    def __init__(self):
+        super().__init__()
+        self.after(50, self.cancle)
+_me.PoleADDUI = _CancelUI
+n_before = len(runner.poledata['main'])
+ed.notebook.select(0); ed.add_pole(); app.update()
+_me.PoleADDUI = _orig_add_ui
+if len(runner.poledata['main']) != n_before:
+    failures.append('전주 추가 창을 취소했는데 전주가 추가됨')
+check('전주 추가 창 취소')
 
 # 3~5) 구간 편집기: 에어조인트 추가(→ 흐름방지 재계산)·삭제, 에어섹션 단일/이중, 흐름방지 수동 추가·삭제
 from core import section_edit  # noqa: E402
