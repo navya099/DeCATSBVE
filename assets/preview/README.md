@@ -10,8 +10,8 @@
 | 파일 | 용도 | 원래 경로 (Object 폴더 기준) |
 |---|---|---|
 | 5M레일_신선_전차선X.csv | 레일 | 철도표준라이브러리/궤도/표준단면/자갈도상/일반철도/ |
-| 건축한계.csv | 건축한계 (현재 빈 메시) | temp/ |
-| 선로중심선.csv | 선로중심선 (현재 빈 메시) | temp/ |
+| 건축한계.csv | 건축한계 (사용자 제공 DXF 를 tools/preview_objects.py outline 으로 변환, m 단위·선로 중심/레일면 원점) | temp/ |
+| 선로중심선.csv | 선로중심선 (선로 중심 x=0, 레일면 −0.5~7m 세로 직사각형) | temp/ |
 | psc거더교_단선.csv | 교량 단선 | 철도표준라이브러리/노반/교량/ |
 | psc빔 복선.csv | 교량 복선 | 전라선/노반/교량/ |
 | natm.csv | 터널 단선 | 동해선/노반/터널/ |
@@ -28,3 +28,11 @@ BVE Object 폴더의 `철도표준라이브러리/전철전력` 과 같은 구�
 1. 인덱스 라이브러리 경로(프리오브젝트 목록·구글 시트의 '경로')로 — BVE Object 폴더, 이 폴더 (대소문자 무시)
    → 같은 이름 파일이 여러 폴더(예: CAKO250/교량용, CAKO250/토공)에 있어도 정확한 파일
 2. 이름 검색 — Object 폴더의 전철전력 라이브러리, 이 폴더
+
+## 직접 만들기 (tools/preview_objects.py)
+
+    python -m tools.preview_objects centerline assets/preview/선로중심선.csv
+    python -m tools.preview_objects outline 건축한계.dxf assets/preview/건축한계.csv --scale 0.001 --origin X,Y [--layer 레이어]
+
+outline: DXF 의 선(폴리선·선·호·원·스플라인)을 선로 방향으로 얇게(기본 0.05m) 밀어낸 띠.
+mm 도면이면 --scale 0.001, --origin 은 도면에서 선로 중심·레일면 위치(도면 단위). ezdxf 필요.

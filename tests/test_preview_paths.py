@@ -111,3 +111,45 @@ def test_null_object_is_not_reported_missing(settings, pole):
     from core.equipment.equipment_data import EquipmentDATA
     pole.equipments.append(EquipmentDATA(name='null', index=0, offset=(0, 0)))
     assert 'null' not in ps.PreviewService().build(pole, 0, mode='single').missing
+
+
+def _parse(text):
+    from xref_module.temp_parser import CSVObjectParser
+    return CSVObjectParser(text.splitlines()).parse()
+
+
+def test_generated_centerline_and_outline():
+    from tools import preview_objects as po
+    c = _parse(po.centerline_csv(bottom=-0.5, top=7.0, width=0.01))
+    xs = [v.x for m in c.meshes for v in m.vertices]
+    ys = [v.y for m in c.meshes for v in m.vertices]
+    assert len(c.meshes) == 1 and (min(xs), max(xs), min(ys), max(ys)) == (-0.005, 0.005, -0.5, 7.0)
+    o = _parse(po.polylines_csv([[(-2.1, 0), (-2.1, 5.15), (2.1, 5.15), (2.1, 0)]], depth=0.05))
+    m = o.meshes[0]
+    assert len(m.vertices) == 8 and len(m.faces) == 3 * 4                      # 선분 3개 × 앞뒤 삼각형 4개
+    assert {v.z for v in m.vertices} == {0.0, 0.05}
+    # 저장소의 선로중심선·건축한계는 이 도구로 만든 것 (빈 메시 아님)
+    with open(os.path.join(ROOT, 'assets', 'preview', '선로중심선.csv'), encoding='utf-8-sig') as f:
+        assert len(_parse(f.read()).meshes) == 1
+    with open(os.path.join(ROOT, 'assets', 'preview', '건축한계.csv'), encoding='utf-8-sig') as f:
+        clearance = _parse(f.read())
+    vs = [v for m in clearance.meshes for v in m.vertices]
+    assert len(clearance.meshes) == 15
+    assert (min(v.x for v in vs), max(v.x for v in vs)) == (-2.1, 2.1) and max(v.y for v in vs) == pytest.approx(6.45)
+
+
+def test_outline_from_dxf(tmp_path):
+    ezdxf = pytest.importorskip('ezdxf')
+    from tools import preview_objects as po
+    doc = ezdxf.new()
+    msp = doc.modelspace()
+    msp.add_lwpolyline([(1000, 500), (1000, 4500), (5000, 4500)], dxfattribs={'layer': '건축한계'})
+    msp.add_arc((3000, 4500), 500, 0, 180, dxfattribs={'layer': '건축한계'})
+    msp.add_line((0, 0), (9000, 0), dxfattribs={'layer': '기타'})
+    path = tmp_path / 'outline.dxf'
+    doc.saveas(path)
+    lines = po.read_dxf_polylines(str(path), layer='건축한계', scale=0.001, origin=(3000, 500))
+    assert len(lines) == 2                                                       # 다른 레이어 제외
+    assert lines[0][0] == pytest.approx((-2.0, 0.0)) and lines[0][-1] == pytest.approx((2.0, 4.0))
+    assert max(y for _, y in lines[1]) == pytest.approx(4.5, abs=0.01)           # 호 → 꺾은선
+    assert len(_parse(po.polylines_csv(lines)).meshes) == 2
