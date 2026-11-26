@@ -44,6 +44,13 @@ class PlotPoleMap(tk.Frame):
         toolbar = NavigationToolbar2Tk(self.canvas, self)
         toolbar.update()
         toolbar.pack(side="bottom", fill="x")
+        self.toolbar = toolbar
+
+        # 배치도 클릭으로 전주 선택: 가장 가까운 전주(복주는 앞/뒤 각각)를 select_callback(트랙, 행 키) 으로 알림
+        # (메인 앱이 편집기 테이블 선택에 연결 → 다른 화면도 그 선택을 따라감)
+        self.select_callback = None
+        self.pick_tolerance_px = 12
+        self.canvas.mpl_connect('button_press_event', self.on_click)
 
         # 이동 버튼 등록
         btn_left = tk.Button(self, text="-1m", command=self.move_left)
@@ -188,6 +195,37 @@ class PlotPoleMap(tk.Frame):
         al = alignment_for(self.runner, track)
         return [u.coord(al) for u in pole_units.track_units(self.runner.poledata.get(track, []))]
 
+    def nearest_unit(self, x_px, y_px):
+        """화면 좌표(픽셀) → 가장 가까운 전주 단위 (트랙, PoleUnit). 허용 거리 밖이면 None"""
+        if not self.runner or not self.runner.poledata:
+            return None
+        best = None
+        to_px = self.ax.transData.transform
+        for track, poles in self.runner.poledata.items():
+            al = alignment_for(self.runner, track)
+            units = pole_units.track_units(poles)
+            if not units:
+                continue
+            coords = np.array([u.coord(al) for u in units], dtype=float)
+            px = to_px(coords)
+            d = np.hypot(px[:, 0] - x_px, px[:, 1] - y_px)
+            i = int(np.argmin(d))
+            if d[i] <= self.pick_tolerance_px and (best is None or d[i] < best[0]):
+                best = (float(d[i]), track, units[i])
+        return None if best is None else (best[1], best[2])
+
+    def on_click(self, event):
+        """왼쪽 클릭 → 가까운 전주 선택 (확대/이동 도구를 쓰는 중이면 무시)"""
+        if event.button != 1 or event.inaxes is not self.ax or event.dblclick:
+            return
+        if getattr(self.toolbar, 'mode', ''):
+            return
+        found = self.nearest_unit(event.x, event.y)
+        if found is None or self.select_callback is None:
+            return
+        track, unit = found
+        self.select_callback(track, unit.key)
+
     def update_plot(self):
         self.ax.clear()
         self.ax.set_title("전주 위치 맵")
@@ -232,9 +270,12 @@ class PlotPoleMap(tk.Frame):
         else:
             self.selected_pole_text = self.ax.text(self.sel_xy[0], self.sel_xy[1], label)
 
-        # 뷰포트 이동
-        self.ax.set_xlim(self.sel_xy[0] - 50, self.sel_xy[0] + 50)
-        self.ax.set_ylim(self.sel_xy[1] - 50, self.sel_xy[1] + 50)
+        # 뷰포트: 선택 전주가 이미 화면 안이면 확대 상태 유지 (배치도 클릭 선택), 밖이면 ±50m 로 이동
+        (x0, x1), (y0, y1) = sorted(self.ax.get_xlim()), sorted(self.ax.get_ylim())
+        visible = x0 <= self.sel_xy[0] <= x1 and y0 <= self.sel_xy[1] <= y1 and (x1 - x0) <= 400
+        if not visible:
+            self.ax.set_xlim(self.sel_xy[0] - 50, self.sel_xy[0] + 50)
+            self.ax.set_ylim(self.sel_xy[1] - 50, self.sel_xy[1] + 50)
         self.canvas.draw_idle()
 
     def on_pole_selected(self, epole):

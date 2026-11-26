@@ -471,6 +471,7 @@ class AutoPoleApp(tk.Tk):
         # 실제 사용 시:
         self.plotter = PlotPoleMap(self.runner, self.events, master=self.plotter_frame)
         self.plotter.pack(fill="both", expand=True)
+        self.plotter.select_callback = self.editor.select_unit   # 배치도 클릭 → 테이블 선택
 
         paned.add(plotter_wrapper, weight=1)
 
