@@ -95,7 +95,8 @@ def test_library_object_by_index_path_disambiguates_same_names(settings):
     svc = ps.PreviewService(lib)
     bridge, earth = svc.find('CaKo250-OpG3.5-I-L', 512), svc.find('CaKo250-OpG3.5-I-L', 540)
     assert bridge and earth and bridge != earth
-    assert os.path.join('cako250', '교량용') in bridge and os.path.join('cako250', '토공') in earth
+    # 대소문자: Linux 는 실제 폴더명(cako250), Windows 는 인덱스 경로 표기(CAKO250) 그대로 → 소문자로 비교
+    assert os.path.join('cako250', '교량용') in bridge.lower() and os.path.join('cako250', '토공') in earth.lower()
     # 전철전력 라이브러리 밖 경로 → 이름 검색으로 (저장소에 같은 이름 파일 중 하나)
     assert svc.find('CaKo250-OpG3.5-I-L', 1010) is not None
     assert svc.find('없는오브젝트', None) is None
