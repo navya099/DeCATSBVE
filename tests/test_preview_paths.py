@@ -80,3 +80,34 @@ def test_object_folder_overrides_bundled(settings, pole):
     result = ps.PreviewService().build(pole, 0, mode='single')
     assert len(result.objects) == 4
     assert all(len(o.mesh.meshes) == 1 for o in result.objects if o.category == 'STRUCTURE')   # 삼각형 1개짜리 사용자 파일
+
+
+def test_library_object_by_index_path_disambiguates_same_names(settings):
+    """같은 이름 파일이 여러 폴더(교량용/토공)에 있으면 인덱스 라이브러리 경로로 정확한 파일 (대소문자 무시)"""
+    import pandas as pd
+    from xref_module.index_libmgr import IndexLibrary
+    user_settings.set('bve_object_root', str(settings / 'nowhere'))
+    lib = IndexLibrary(pd.DataFrame([
+        {'인덱스': 512, '파일명': 'CaKo250-OpG3.5-I-L', '경로': r'철도표준라이브러리\전철전력\CAKO250\교량용\CaKo250-OpG3.5-I-L.csv'},
+        {'인덱스': 540, '파일명': 'CaKo250-OpG3.5-I-L', '경로': r'철도표준라이브러리\전철전력\CAKO250\토공\CaKo250-OpG3.5-I-L.csv'},
+        {'인덱스': 1010, '파일명': 'CaKo250-OpG3.5-I-L', '경로': r'원강선\전철전력\교량용\CaKo250-OpG3.5-I-L.csv'},
+    ]))
+    svc = ps.PreviewService(lib)
+    bridge, earth = svc.find('CaKo250-OpG3.5-I-L', 512), svc.find('CaKo250-OpG3.5-I-L', 540)
+    assert bridge and earth and bridge != earth
+    assert os.path.join('cako250', '교량용') in bridge and os.path.join('cako250', '토공') in earth
+    # 전철전력 라이브러리 밖 경로 → 이름 검색으로 (저장소에 같은 이름 파일 중 하나)
+    assert svc.find('CaKo250-OpG3.5-I-L', 1010) is not None
+    assert svc.find('없는오브젝트', None) is None
+    # Object 폴더에 있으면 그 파일 먼저
+    own = settings / 'obj' / '철도표준라이브러리' / '전철전력' / 'CAKO250' / '토공' / 'CaKo250-OpG3.5-I-L.csv'
+    own.parent.mkdir(parents=True)
+    own.write_text(TRIANGLE, encoding='utf-8')
+    user_settings.set('bve_object_root', str(settings / 'obj'))
+    assert ps.PreviewService(lib).find('CaKo250-OpG3.5-I-L', 540) == str(own)
+
+
+def test_null_object_is_not_reported_missing(settings, pole):
+    from core.equipment.equipment_data import EquipmentDATA
+    pole.equipments.append(EquipmentDATA(name='null', index=0, offset=(0, 0)))
+    assert 'null' not in ps.PreviewService().build(pole, 0, mode='single').missing

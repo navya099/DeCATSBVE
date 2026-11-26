@@ -22,3 +22,12 @@ class IndexLibrary:
         if row.empty:
             return None
         return row.iloc[0]["파일명"]
+    def get_path_by_index(self, index):
+        """인덱스 → 오브젝트 경로 (BVE Object 폴더 기준). 없으면 None"""
+        if index is None:
+            return None
+        row = self.df[self.df["인덱스"] == index]
+        if row.empty:
+            return None
+        path = row.iloc[0]["경로"]
+        return path if isinstance(path, str) and path else None

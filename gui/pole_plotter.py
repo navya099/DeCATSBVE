@@ -79,7 +79,8 @@ class PlotPoleMap(tk.Frame):
             direction = -1
 
         for i, lis in enumerate(self.selected_epoles):
-            result = self.service.build(lis.pole, i, self.runner.track_distance, direction, mode=self.runner.track_mode)
+            result = self.service.build(lis.pole, i, self.runner.track_distance, direction, mode=self.runner.track_mode,
+                                            idxlib=self.runner.idxlib)
             for obj in result.objects:
                 self.viewer.add_object(obj)
             missing_all.extend(result.missing)
@@ -113,7 +114,8 @@ class PlotPoleMap(tk.Frame):
                 direction = -1
 
             for i, lis in enumerate(self.selected_epoles):
-                result = self.service.build(lis.pole, i, self.runner.track_distance, direction, mode=self.runner.track_mode)
+                result = self.service.build(lis.pole, i, self.runner.track_distance, direction, mode=self.runner.track_mode,
+                                            idxlib=self.runner.idxlib)
                 for obj in result.objects:
                     self.viewer.add_object(obj)
                 missing_all.extend(result.missing)
