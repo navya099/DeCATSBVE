@@ -40,6 +40,9 @@ def normalize(runner):
     if not hasattr(runner, 'wire_overrides') or runner.wire_overrides is None:
         runner.wire_overrides = {}
     _normalize_alignments(runner)
+    # 다음 전주 연결은 저장되지 않으므로(.dat) 불러온 뒤 다시 잇는다
+    for track, poles in (runner.poledata or {}).items():
+        PoleUpdator.update_all(poles, alignment_for(runner, track))
 
 
 def _normalize_alignments(runner):
@@ -92,8 +95,11 @@ def rebuild(runner):
     if not runner.poledata:
         return
     normalize(runner)
-    # 1) 인접 전주 연결 (next_pos, span 등). 레일 단절 구간은 잇지 않음
+    # 1) 선형 값(좌표·계획고·곡선·구배)을 측점에서 다시 계산하고, 인접 전주를 이음 (next_* 는 이은 전주에서 계산).
+    #    레일 단절 구간은 잇지 않음
+    from core.pole.pole_geometry import place_track
     for track, poles in runner.poledata.items():
+        place_track(runner, track, alignment_for(runner, track))
         PoleUpdator.update_all(poles, alignment_for(runner, track))
 
     # 2) 전선 재생성
