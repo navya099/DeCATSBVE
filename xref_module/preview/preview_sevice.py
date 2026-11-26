@@ -10,7 +10,8 @@ from xref_module.preview.preview_result import PreviewBuildResult
 from xref_module.vector3.vector3 import Vector3
 import math
 
-# 미리보기 배경 오브젝트: BVE Object 폴더(사용자 설정) 기준 상대 경로. 파일이 없으면 건너뛰고 누락 목록에 표시
+# 미리보기 배경 오브젝트: BVE Object 폴더(사용자 설정) 기준 상대 경로.
+# Object 폴더에 없으면 저장소 assets/preview 의 같은 이름 파일, 그것도 없으면 건너뛰고 누락 목록에 표시
 TRACK_OBJECT = '철도표준라이브러리/궤도/표준단면/자갈도상/일반철도/5M레일_신선_전차선X.csv'
 CLEARANCE_OBJECT = 'temp/건축한계.csv'
 CENTERLINE_OBJECT = 'temp/선로중심선.csv'
@@ -40,11 +41,12 @@ class PreviewService:
 
     @staticmethod
     def _background(items, missing, relative, transform, category):
-        path = PathResolver.object_path(relative)
-        if os.path.exists(path):
+        """배경 오브젝트: Object 폴더에 있으면 그 파일(사용자 수정본), 없으면 저장소 assets/preview 파일"""
+        path = PathResolver.preview_object(relative)
+        if path is not None:
             items.append(PreviewItem(path=path, transform=transform, category=category))
         else:
-            missing.append(path)
+            missing.append(PathResolver.object_path(relative))
 
     def build(self, pole, trackidx, distnace=4.3, direction=1, mode='single'):
         items = []
