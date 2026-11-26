@@ -185,14 +185,18 @@ def write_outputs(runner, out_dir, log_text):
     return summary
 
 
-def run(cfg, out_dir, quiet=True):
-    """설정으로 실행하고 out_dir 에 결과 저장. summary dict 반환"""
+def run(cfg, out_dir, quiet=True, drawings=None):
+    """설정으로 실행하고 out_dir 에 결과 저장. summary dict 반환.
+    drawings: DrawingSettings 를 주면 평면도·종단면도(DXF)도 out_dir 에 저장 (summary['drawings'])"""
     runner = build_runner(cfg)
     buf = io.StringIO()
     t = time.time()
     with contextlib.redirect_stdout(buf) if quiet else contextlib.nullcontext():
         runner.run()
     summary = write_outputs(runner, out_dir, buf.getvalue())
+    if drawings is not None:
+        from core.drawing import export_drawings
+        summary['drawings'] = export_drawings(runner, out_dir, drawings)
     summary['elapsed_sec'] = round(time.time() - t, 2)
     with open(os.path.join(out_dir, 'run.log'), 'w', encoding='utf-8') as f:
         f.write(buf.getvalue())
@@ -220,6 +224,9 @@ def main(argv=None):
     ap.add_argument('--custom-json')
     ap.add_argument('--custom-spandata')
     ap.add_argument('--out', required=True, help='출력 폴더')
+    ap.add_argument('--dxf', action='store_true', help='평면도·종단면도(DXF)도 저장 (ezdxf 필요)')
+    ap.add_argument('--plan-scale', type=float, default=1000, help='평면 축척 1:N (기본 1000)')
+    ap.add_argument('--profile-v-scale', type=float, default=100, help='종단 수직 축척 1:N (기본 100)')
     ap.add_argument('--verbose', action='store_true', help='처리 로그를 화면에도 출력')
     a = ap.parse_args(argv)
 
@@ -242,12 +249,18 @@ def main(argv=None):
     if missing:
         ap.error(f"입력 파일 지정 필요: {missing} (--config 또는 --info-dir/--alignment/--structure)")
 
-    summary = run(cfg, a.out, quiet=not a.verbose)
+    drawings = None
+    if a.dxf:
+        from core.drawing import DrawingSettings
+        drawings = DrawingSettings(plan_scale=a.plan_scale, profile_v_scale=a.profile_v_scale)
+    summary = run(cfg, a.out, quiet=not a.verbose, drawings=drawings)
     for track, s in summary['tracks'].items():
         print(f"[{track}] 전주 {s['poles']}개, 경간 {s['spans']}개 ({s['first_pole']} ~ {s['last_pole']})")
     print(f"처리 오류 {len(summary['errors'])}건, {summary['elapsed_sec']}초 → {a.out}")
     for line in summary['errors'][:10]:
         print('  ', line)
+    for path in summary.get('drawings', []):
+        print('도면:', path)
     return 0
 
 

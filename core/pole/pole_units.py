@@ -74,3 +74,23 @@ def find_unit(poles, key):
     if which is not None and getattr(pole, 'twin', None) is None:
         which = None   # 복주가 일반 전주로 바뀐 뒤
     return PoleUnit(pole, which)
+
+
+def bracket_stations(pole):
+    """브래킷별 측점 보정값 [(브래킷, dpos)] — BVE CSV 와 도면이 같은 규칙을 쓴다.
+    복주: 달린 전주 위치(∓간격/2). 단주 평행 개소: 브래킷 2개를 ±0.528m(에어조인트 중간주는 ±0.8m).
+    구간 시작·끝 전주(에어조인트 1·5호주, 에어섹션 AS1_1·AS1_5·AS2_4)는 첫 브래킷만. 일반 전주는 모두 측점에."""
+    from enums.section_type import SectionType, section_role
+    brackets = list(pole.brackets or [])
+    if getattr(pole, 'twin', None) is not None:
+        front, rear = pole.station_offsets
+        return [(b, rear if getattr(b, 'on_twin', False) else front) for b in brackets]
+    role = section_role(pole.section)
+    if role in (SectionType.AJ_START, SectionType.AJ_END, SectionType.AS1_1, SectionType.AS1_5, SectionType.AS2_4):
+        return [(brackets[0], 0)] if brackets else []
+    if role == SectionType.AJ_MIDDLE:
+        return list(zip(brackets, (-0.8, 0.8)))
+    if role in (SectionType.AJ_2, SectionType.AJ_4, SectionType.AS1_2, SectionType.AS1_3, SectionType.AS1_4_S,
+                SectionType.AS1_4_D, SectionType.AS2_1, SectionType.AS2_2, SectionType.AS2_3):
+        return list(zip(brackets, (-0.528, 0.528)))
+    return [(b, 0) for b in brackets]
