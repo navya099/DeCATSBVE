@@ -4,6 +4,8 @@
     'mast'                 기둥            'base'          기초
     'acc:{i}'              기둥 부속(밴드)   'eq:{i}'        장비 (급전선설비, 평행틀 등)
     'br:{i}'               브래킷           'br:{i}/fit:{j}' 브래킷의 피팅
+    'twin/mast' 'twin/base' 'twin/acc:{i}' 'twin/eq:{i}'  복주 두 번째 전주의 기둥·기초·부속·장비
+    (복주 브래킷은 'br:{i}' 그대로, BracketDATA.on_twin 으로 앞/뒤 전주 구분)
 흐름방지장치·봉강지선은 흐름방지 처리기가 재계산마다 다시 만들므로 읽기 전용이다.
 
 오브젝트 이름 ↔ 인덱스는 인덱스 라이브러리(runner.idxlib)로 맞춘다. 이름만 주면 인덱스를 찾고,
@@ -50,28 +52,48 @@ def _name_of(obj):
     return getattr(obj, 'bracket_name', None) or getattr(obj, 'name', None) or getattr(obj, 'label', '') or ''
 
 
-def components(pole):
-    """전주 구성품 목록 (표시 순서: 기둥, 기초, 부속, 브래킷(+피팅), 장비)"""
+TWIN = 'twin/'   # 복주 두 번째 전주 구성품 키 접두어
+TWIN_TEXT = ('앞 전주', '뒤 전주')
+
+
+def _mast_rows(mast, prefix='', detail=''):
     rows = []
-    mast = pole.mast
-    if mast is not None:
-        rows.append(ComponentRow('mast', 'mast', mast.name, mast.index, tuple(_xy(mast.offset)), mast.rotation, '', True))
-        if mast.base is not None:
-            b = mast.base
-            rows.append(ComponentRow('base', 'base', b.name, b.index, tuple(_xy(b.offset)), b.rotation, '', True))
-        for i, acc in enumerate(mast.accessories or []):
-            rows.append(ComponentRow(f'acc:{i}', 'acc', acc.name, acc.index, tuple(_xy(acc.offset)), acc.rotation,
-                                     '', True))
+    if mast is None:
+        return rows
+    rows.append(ComponentRow(f'{prefix}mast', 'mast', mast.name, mast.index, tuple(_xy(mast.offset)), mast.rotation,
+                             detail, True))
+    if mast.base is not None:
+        b = mast.base
+        rows.append(ComponentRow(f'{prefix}base', 'base', b.name, b.index, tuple(_xy(b.offset)), b.rotation, detail,
+                                 True))
+    for i, acc in enumerate(mast.accessories or []):
+        rows.append(ComponentRow(f'{prefix}acc:{i}', 'acc', acc.name, acc.index, tuple(_xy(acc.offset)), acc.rotation,
+                                 detail, True))
+    return rows
+
+
+def components(pole):
+    """전주 구성품 목록 (표시 순서: 기둥, 기초, 부속, 브래킷(+피팅), 장비, 복주 두 번째 전주의 기둥·장비)"""
+    twin = getattr(pole, 'twin', None)
+    rows = _mast_rows(pole.mast, detail=TWIN_TEXT[0] if twin else '')
     for i, br in enumerate(pole.brackets):
         key = f'br:{i}'
+        detail = str(br.bracket_type or '')
+        if twin is not None:
+            detail = f'{detail} ({TWIN_TEXT[1] if getattr(br, "on_twin", False) else TWIN_TEXT[0]})'.strip()
         rows.append(ComponentRow(key, 'br', br.bracket_name, br.index, tuple(_xy(br.offset)), br.rotation,
-                                 str(br.bracket_type or ''), True))
+                                 detail, True))
         for j, fit in enumerate(br.fittings):
             rows.append(ComponentRow(f'{key}/fit:{j}', 'fit', fit.label, fit.index, tuple(_xy(fit.offset)),
                                      fit.rotation, '', True, parent=key))
     for i, eq in enumerate(pole.equipments):
         rows.append(ComponentRow(f'eq:{i}', 'eq', eq.name, eq.index, tuple(_xy(eq.offset)), eq.rotation, eq.type,
                                  eq.type not in READ_ONLY_EQUIPMENT_TYPES))
+    if twin is not None:
+        rows += _mast_rows(twin.mast, TWIN, TWIN_TEXT[1])
+        for i, eq in enumerate(twin.equipments):
+            rows.append(ComponentRow(f'{TWIN}eq:{i}', 'eq', eq.name, eq.index, tuple(_xy(eq.offset)), eq.rotation,
+                                     f'{eq.type} ({TWIN_TEXT[1]})', eq.type not in READ_ONLY_EQUIPMENT_TYPES))
     return rows
 
 
@@ -82,8 +104,29 @@ def _xy(offset):
     return tuple(offset)
 
 
+def _holder(pole, key):
+    """키 → (기둥·장비를 가진 객체(전주 또는 복주 두 번째 전주), 접두어를 뗀 키)"""
+    if key.startswith(TWIN):
+        if getattr(pole, 'twin', None) is None:
+            raise KeyError(key)
+        return pole.twin, key[len(TWIN):]
+    return pole, key
+
+
 def _get(pole, key):
     """키 → 구성품 객체"""
+    holder, key = _holder(pole, key)
+    if holder is not pole:
+        if key == 'mast':
+            return holder.mast
+        if key == 'base':
+            return holder.mast.base if holder.mast else None
+        kind, _, rest = key.partition(':')
+        if kind == 'acc':
+            return (holder.mast.accessories or [])[int(rest)]
+        if kind == 'eq':
+            return holder.equipments[int(rest)]
+        raise KeyError(key)
     if key == 'mast':
         return pole.mast
     if key == 'base':
@@ -166,9 +209,10 @@ def add_component(runner, pole, kind, name=None, index=None, offset=(0.0, 0.0), 
     name, index = resolve(runner.idxlib, name, index)
     offset = (float(offset[0]), float(offset[1]))
     rotation = float(rotation)
+    on_twin = parent is not None and parent.startswith(TWIN.rstrip('/')) and getattr(pole, 'twin', None) is not None
     if kind == 'br':
         pole.brackets.append(BracketDATA(bracket_type=pole.base_type, index=index, offset=offset,
-                                         rotation=rotation, bracket_name=name))
+                                         rotation=rotation, bracket_name=name, on_twin=on_twin))
         return f'br:{len(pole.brackets) - 1}'
     if kind == 'fit':
         if not parent or not parent.startswith('br:') or '/fit:' in parent:
@@ -176,37 +220,43 @@ def add_component(runner, pole, kind, name=None, index=None, offset=(0.0, 0.0), 
         br = _get(pole, parent)
         br.fittings.append(FittingDATA(index=index, offset=offset, rotation=rotation, label=name))
         return f'{parent}/fit:{len(br.fittings) - 1}'
+    holder, prefix = pole, ''
+    if parent is not None and parent.startswith(TWIN.rstrip('/')):   # 'twin' 또는 'twin/...' : 복주 두 번째 전주
+        if getattr(pole, 'twin', None) is None:
+            raise ValueError('복주 전주가 아닙니다.')
+        holder, prefix = pole.twin, TWIN
     if kind == 'eq':
         if equipment_type in READ_ONLY_EQUIPMENT_TYPES:
             raise ValueError(f'{equipment_type} 는 흐름방지장치 추가 기능으로 설치하세요.')
-        pole.equipments.append(EquipmentDATA(name=name, index=index, offset=offset, rotation=rotation,
-                                             type=equipment_type or '기타장비'))
-        return f'eq:{len(pole.equipments) - 1}'
+        holder.equipments.append(EquipmentDATA(name=name, index=index, offset=offset, rotation=rotation,
+                                               type=equipment_type or '기타장비'))
+        return f'{prefix}eq:{len(holder.equipments) - 1}'
     # acc
-    if pole.mast is None:
+    if holder.mast is None:
         raise ValueError('기둥이 없는 전주에는 부속을 추가할 수 없습니다.')
-    if pole.mast.accessories is None:
-        pole.mast.accessories = []
-    pole.mast.accessories.append(MastAccessory(name=name, index=index, offset=offset, rotation=rotation))
-    return f'acc:{len(pole.mast.accessories) - 1}'
+    if holder.mast.accessories is None:
+        holder.mast.accessories = []
+    holder.mast.accessories.append(MastAccessory(name=name, index=index, offset=offset, rotation=rotation))
+    return f'{prefix}acc:{len(holder.mast.accessories) - 1}'
 
 
 def remove_component(pole, key):
     """구성품 삭제 (기둥은 삭제 불가, 기초는 없음으로)"""
+    obj = _get(pole, key)
+    holder, key = _holder(pole, key)
     if key == 'mast':
         raise ValueError('기둥은 삭제할 수 없습니다. 다른 기둥으로 바꾸세요.')
     if key == 'base':
-        if pole.mast is not None:
-            pole.mast.base = None
+        if holder.mast is not None:
+            holder.mast.base = None
         return
-    obj = _get(pole, key)
     if isinstance(obj, EquipmentDATA) and obj.type in READ_ONLY_EQUIPMENT_TYPES:
         raise ValueError(f'{obj.type} 는 흐름방지장치 삭제 기능으로 제거하세요.')
     kind, _, rest = key.partition(':')
     if kind == 'acc':
-        pole.mast.accessories.pop(int(rest))
+        holder.mast.accessories.pop(int(rest))
     elif kind == 'eq':
-        pole.equipments.pop(int(rest))
+        holder.equipments.pop(int(rest))
     elif '/fit:' in rest:
         b, f = rest.split('/fit:')
         pole.brackets[int(b)].fittings.pop(int(f))
@@ -214,16 +264,31 @@ def remove_component(pole, key):
         pole.brackets.pop(int(rest))
 
 
-def set_base(runner, pole, name=None, index=None):
-    """기초 지정 (없던 기초도 추가)"""
-    if pole.mast is None:
+def set_base(runner, pole, name=None, index=None, twin=False):
+    """기초 지정 (없던 기초도 추가). twin=True: 복주 두 번째 전주의 기초"""
+    holder = pole
+    if twin:
+        if getattr(pole, 'twin', None) is None:
+            raise ValueError('복주 전주가 아닙니다.')
+        holder = pole.twin
+    if holder.mast is None:
         raise ValueError('기둥이 없는 전주입니다.')
     name, index = resolve(runner.idxlib, name, index)
-    if pole.mast.base is None:
-        pole.mast.base = MastBase(name=name, index=index, offset=(_xy(pole.mast.offset)[0], 0.0),
-                                  rotation=pole.mast.rotation)
+    if holder.mast.base is None:
+        holder.mast.base = MastBase(name=name, index=index, offset=(_xy(holder.mast.offset)[0], 0.0),
+                                    rotation=holder.mast.rotation)
     else:
-        pole.mast.base.name, pole.mast.base.index = name, index
+        holder.mast.base.name, holder.mast.base.index = name, index
+
+
+def component_pole(pole, key):
+    """구성품이 달린 전주: 0 = 주(앞) 전주, 1 = 복주 두 번째(뒤) 전주"""
+    if key.startswith(TWIN):
+        return 1
+    if key.startswith('br:') and getattr(pole, 'twin', None) is not None:
+        b = int(key.split(':')[1].split('/')[0])
+        return 1 if getattr(pole.brackets[b], 'on_twin', False) else 0
+    return 0
 
 
 # ── 자동 구성 재생성 (건식게이지 변경, 되돌리기) ─────────────────
@@ -234,6 +299,7 @@ def regenerate(runner, pole, alignment):
     from core.section_edit import kind_of_pole
     kind = kind_of_pole(runner, pole) if section is not None else None
     pole.brackets, pole.mast, pole.equipments = [], None, []
+    pole.twin = None
     if section is None:
         processor = TunnelSectionProcessor if pole.structure == '터널' else NormalSectionProcessor
         processor.process(pole, runner.dataprocessor, runner.idxlib)

@@ -11,6 +11,7 @@ from matplotlib.collections import LineCollection
 from core.model_rebuilder import alignment_for, rebuild
 from event.events import MODEL_CHANGED, POLE_SELECTED, POLES_SELECTED
 from core.pole import pole_edit
+from core.pole import pole_units
 from xref_module.dxf_controller.dxf_controller import DXFController
 from xref_module.preview.preview_sevice import PreviewService
 from xref_module.preview.preview_viewer import PreviewViewer
@@ -141,7 +142,7 @@ class PlotPoleMap(tk.Frame):
         # 본선 전주 좌표 배열
         if not self.runner.poledata:
             return
-        main_coords = np.array([pole.coord for pole in self.runner.poledata.get("main", [])])
+        main_coords = np.array(self.unit_coords("main"))
         if len(main_coords) > 0:
             self.ax.scatter(
                 main_coords[:, 0], main_coords[:, 1],
@@ -149,7 +150,7 @@ class PlotPoleMap(tk.Frame):
             )
 
         # 상선 전주 좌표 배열
-        sub_coords = np.array([pole.coord for pole in self.runner.poledata.get("sub", [])])
+        sub_coords = np.array(self.unit_coords("sub"))
         if len(sub_coords) > 0:
             self.ax.scatter(
                 sub_coords[:, 0], sub_coords[:, 1],
@@ -158,6 +159,11 @@ class PlotPoleMap(tk.Frame):
 
         self.ax.legend()
         self.canvas.draw_idle()
+
+    def unit_coords(self, track):
+        """실제 전주 좌표 목록 (복주 지지점은 앞·뒤 전주 2개)"""
+        al = alignment_for(self.runner, track)
+        return [u.coord(al) for u in pole_units.track_units(self.runner.poledata.get(track, []))]
 
     def update_plot(self):
         self.ax.clear()
@@ -178,45 +184,39 @@ class PlotPoleMap(tk.Frame):
         self.selected_pole_scatter = None
         self.selected_pole_text = None
         if self.selected_pole is not None:
-            self.highlight_pole(self.selected_pole.pos)
+            self.highlight_pole(self.selected_pole.pos, getattr(self.selected_epole, 'which', None),
+                                pole=self.selected_pole)
 
-    def highlight_pole(self, pos):
-        # 선택된 전주 찾기
-        for track_name, poles in self.runner.poledata.items():
-            for pole in poles:
-                if pole.pos == pos:
-                    self.selected_pole = pole
-                    self.sel_xy = pole.coord[0], pole.coord[1]
+    def highlight_pole(self, pos, which=None, pole=None):
+        """선택 전주 강조. 복주면 which(0 앞 / 1 뒤) 전주 위치에, 전주번호도 '-F' / '-B'"""
+        if pole is None:
+            pole = next((p for poles in self.runner.poledata.values() for p in poles if p.pos == pos), None)
+        if pole is None:
+            self.canvas.draw_idle()
+            return
+        self.selected_pole = pole
+        unit = pole_units.PoleUnit(pole, which if getattr(pole, 'twin', None) is not None else None)
+        self.sel_xy = unit.coord(alignment_for(self.runner, pole.track))
+        label = unit.label
 
-                    if hasattr(self, "selected_pole_scatter") and self.selected_pole_scatter:
-                        # ✅ 기존 scatter 좌표 갱신
-                        self.selected_pole_scatter.set_offsets([self.sel_xy])
-                    else:
-                        # 처음 선택 시 scatter 생성
-                        self.selected_pole_scatter = self.ax.scatter(
-                            self.sel_xy[0], self.sel_xy[1],
-                            c="red", s=100, zorder=5
-                        )
+        if self.selected_pole_scatter:
+            self.selected_pole_scatter.set_offsets([self.sel_xy])  # 기존 강조 위치 갱신
+        else:
+            self.selected_pole_scatter = self.ax.scatter(self.sel_xy[0], self.sel_xy[1], c="red", s=100, zorder=5)
+        if getattr(self, "selected_pole_text", None):
+            self.selected_pole_text.set_position(self.sel_xy)
+            self.selected_pole_text.set_text(label)
+        else:
+            self.selected_pole_text = self.ax.text(self.sel_xy[0], self.sel_xy[1], label)
 
-                    # 텍스트도 갱신하거나 새로 추가
-                    if hasattr(self, "selected_pole_text") and self.selected_pole_text:
-                        self.selected_pole_text.set_position(self.sel_xy)
-                        self.selected_pole_text.set_text(f'{pole.post_number}')
-                    else:
-                        self.selected_pole_text = self.ax.text(
-                            self.sel_xy[0], self.sel_xy[1], f'{pole.post_number}'
-                        )
-
-                    # 뷰포트 이동
-                    self.ax.set_xlim(self.sel_xy[0] - 50, self.sel_xy[0] + 50)
-                    self.ax.set_ylim(self.sel_xy[1] - 50, self.sel_xy[1] + 50)
-                    break
-
+        # 뷰포트 이동
+        self.ax.set_xlim(self.sel_xy[0] - 50, self.sel_xy[0] + 50)
+        self.ax.set_ylim(self.sel_xy[1] - 50, self.sel_xy[1] + 50)
         self.canvas.draw_idle()
 
     def on_pole_selected(self, epole):
         self.selected_epole = epole
-        self.highlight_pole(epole.pole.pos)
+        self.highlight_pole(epole.pole.pos, getattr(epole, 'which', None), pole=epole.pole)
 
     def on_poles_selected(self, epoles):
         self.selected_epoles = epoles

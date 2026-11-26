@@ -2,6 +2,10 @@
 
 class DatasetGetter:
     """데이터셋 겟터"""
+    # 실행 설정(UI)에서 입력한 복주 쌍 전주 간격. None 이면 데이터셋 값 (runner.apply_dataset_options 가 설정)
+    double_pole_spacing_override = None
+    double_pole_feeder_override = None   # 'both' | 'front' | None(데이터셋 값)
+
     def __init__(self, dataset):
         self.dataset = dataset
 
@@ -151,6 +155,25 @@ class DatasetGetter:
     def get_airjoint_f_bracket_height(self):
         """에어조인트구간 f브래킷 인상높이 반환"""
         return self.dataset['airjoint']['bracket_height']
+
+    DOUBLE_POLE_DEFAULTS = {'spacing': 1.0, 'feeder': 'both'}
+    DOUBLE_POLE_FEEDER = ('both', 'front')
+
+    def get_double_pole_settings(self):
+        """복주 에어조인트 설정 {'spacing': 쌍 전주 선로방향 간격(m), 'feeder': 'both'(두 전주) | 'front'(앞 전주만)}.
+        데이터셋에 없으면 기본값 (구버전 커스텀 데이터셋 호환). 간격·급전선설비는 실행 설정 입력값이 있으면 그 값"""
+        value = {**self.DOUBLE_POLE_DEFAULTS, **(self.dataset.get('airjoint', {}).get('double_pole') or {})}
+        if self.double_pole_spacing_override is not None:
+            value['spacing'] = self.double_pole_spacing_override
+        if self.double_pole_feeder_override is not None:
+            value['feeder'] = self.double_pole_feeder_override
+        spacing = float(value['spacing'])
+        if spacing <= 0:
+            raise ValueError(f'airjoint.double_pole.spacing 은 0보다 커야 합니다: {spacing}')
+        if value['feeder'] not in self.DOUBLE_POLE_FEEDER:
+            raise ValueError(f"airjoint.double_pole.feeder 는 {'/'.join(self.DOUBLE_POLE_FEEDER)} 중 하나: "
+                             f"{value['feeder']}")
+        return {'spacing': spacing, 'feeder': value['feeder']}
 
     def get_airsection_f_bracket_height(self):
         """에어섹션구간 f브래킷 인상높이 반환"""

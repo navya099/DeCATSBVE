@@ -8,9 +8,11 @@ from dataset.dataset_getter import DatasetGetter
 class MASTBuilder:
     """전주 관련 빌더(기둥, 기초, 악세서리)"""
     @staticmethod
-    def build(pole: PoleDATA, dataprocessor: DatasetGetter, idxlib, rotation: float) -> Mast:
+    def build(pole: PoleDATA, dataprocessor: DatasetGetter, idxlib, rotation: float, as_normal: bool = False) -> Mast:
+        """as_normal: 구간 전주라도 일반개소 기둥·밴드로 (복주 에어조인트의 쌍 전주 — 전주마다 브래킷 1개)"""
+        section = None if as_normal else pole.section
         #기둥
-        mast_index = dataprocessor.get_mast_index(pole.structure, pole.section)
+        mast_index = dataprocessor.get_mast_index(pole.structure, section)
         mast_name = idxlib.get_name(mast_index)
 
         #기초
@@ -23,7 +25,7 @@ class MASTBuilder:
         # 밴드
         accessories = []
         speed = dataprocessor.get_design_speed()
-        if pole.section is None:
+        if section is None:
 
              size = 'P10' if speed == 150 or speed == 250 else 'H250'
              accessories += AccessoryBuilder.build(dataprocessor, idxlib, '가동브래킷용', size, pole.structure, rotation,

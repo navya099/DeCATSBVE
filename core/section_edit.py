@@ -1,7 +1,7 @@
 """구간 편집 — 에어조인트·에어섹션·흐름방지 구간 조회·추가·삭제 (GUI 없이 동작)
 
 구간 = 연속한 여러 전주를 묶는 설비 단위.
-    에어조인트: 인류구간(장력 구간) 구분용. 현재 2경간 에어조인트(전주 5개)만 지원
+    에어조인트: 인류구간(장력 구간) 구분용. 2경간 단주(전주 5개) / 2경간 복주(지지점 5개, 전주 8개)
     에어섹션:   변전소(SS·SP 등) 위상 구분용. 단일(전주 5개) / 이중(전주 8개)
     흐름방지:   장력 구간 가운데의 흐름방지장치 (전주 3개)
 
@@ -16,8 +16,8 @@ from typing import Callable
 
 from core.airjoint.airjoint_processor import AirJointProcessor
 from core.airsection.airsection_processor import AirSectionProcessor
-from enums.section_type import (AIRJOINT_SEQUENCE, AIRSECTION_DOUBLE, AIRSECTION_SINGLE, FlowStop,
-                                SectionType)
+from enums.section_type import (AIRJOINT_DOUBLE_POLE_SEQUENCE, AIRJOINT_SEQUENCE, AIRSECTION_DOUBLE,
+                                AIRSECTION_SINGLE, FlowStop, SectionType)
 
 CATEGORY_TEXT = {'airjoint': '에어조인트', 'airsection': '에어섹션', 'flowstop': '흐름방지'}
 
@@ -38,6 +38,8 @@ class SectionKind:
 
 
 def _airjoint_processor(runner, pole, alignment):
+    if hasattr(runner, 'apply_dataset_options'):
+        runner.apply_dataset_options()  # 실행 설정의 복주 쌍 전주 간격·급전선설비
     AirJointProcessor.process(pole, alignment, runner.dataprocessor, runner.idxlib)
 
 
@@ -61,6 +63,9 @@ def register_kind(kind: SectionKind):
 
 register_kind(SectionKind('airjoint_2span', '에어조인트 (2경간, 전주 5개)', 'airjoint',
                           '인류구간(장력 구간) 구분', AIRJOINT_SEQUENCE, _airjoint_processor))
+register_kind(SectionKind('airjoint_2span_double_pole', '복주 에어조인트 (2경간, 지지점 5개·전주 8개)', 'airjoint',
+                          '인류구간(장력 구간) 구분 — 2·3·4호주에 전주 2개(브래킷 1개씩), 레거시 방식',
+                          AIRJOINT_DOUBLE_POLE_SEQUENCE, _airjoint_processor))
 register_kind(SectionKind('airsection_single', '에어섹션 단일 (전주 5개)', 'airsection',
                           '변전소(SS·SP 등) 위상 구분', AIRSECTION_SINGLE, _airsection_processor('single')))
 register_kind(SectionKind('airsection_double', '에어섹션 이중 (전주 8개)', 'airsection',
@@ -199,6 +204,7 @@ def apply_add(runner, plan, alignment_for):
     alignment = alignment_for(runner, plan.track)
     for pole in plan.poles:
         pole.brackets, pole.mast, pole.equipments = [], None, []
+        pole.twin = None
         kind.processor(runner, pole, alignment)
 
 

@@ -4,7 +4,7 @@ from core.alignment.alignment import as_alignment
 from utils.math_util import change_permile_to_degree
 
 
-from enums.section_type import FlowStop, SectionType
+from enums.section_type import FlowStop, SectionType, section_role
 
 FLOWSTOP_TAGS = (FlowStop.START, FlowStop.MIDDLE, FlowStop.END)
 FLOWSTOP_EQUIPMENT_TYPES = ('흐름방지장치', '봉강지선')
@@ -71,9 +71,10 @@ class AnticreepingDeviceProcessor:
         gaps = []
         last_end = None
         for pole in sorted(poles, key=lambda p: p.pos):
-            if pole.section == SectionType.AJ_END:
+            role = section_role(pole.section)  # 복주 에어조인트 포함
+            if role == SectionType.AJ_END:
                 last_end = pole.pos
-            elif pole.section == SectionType.AJ_START and last_end is not None:
+            elif role == SectionType.AJ_START and last_end is not None:
                 gaps.append((last_end, pole.pos))
                 last_end = None
             elif pole.section is not None:

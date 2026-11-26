@@ -2,6 +2,7 @@ from core.base_runner import BaseRunner
 from core.equipment.anticreepingdevice.anticreeping_device_processor import AnticreepingDeviceProcessor
 from core.pole.pole_processor import PoleProcessor
 from core.wire.wire_processor import WireProcessor
+from enums.section_type import AIRJOINT_DOUBLE_POLE_SEQUENCE
 from utils.comom_util import distribute_pole_spacing_flexible, define_airjoint_section
 
 class AutoRunner(BaseRunner):
@@ -11,10 +12,12 @@ class AutoRunner(BaseRunner):
     def run(self):
         """전체 작업을 관리하는 메인 함수"""
         self.base_info_load()
+        self.apply_dataset_options()
         self.pole_positions = distribute_pole_spacing_flexible(self.start_station, self.end_station, curvelist=self.curvelist,structure_list=self.structure_list, design_speed=self.designspeed)
         self.create_dictionary_by_track()
 
-        self.airjoint_list = define_airjoint_section(self.pole_positions ,airjoint_span=1600)
+        tags = AIRJOINT_DOUBLE_POLE_SEQUENCE if getattr(self, 'airjoint_type', 'single') == 'double_pole' else None
+        self.airjoint_list = define_airjoint_section(self.pole_positions, airjoint_span=1600, tags=tags)
         self.pole_processor = PoleProcessor()
 
         self.poledata = self.pole_processor.process_pole_multitrack(
