@@ -324,6 +324,14 @@ class AutoPoleApp(tk.Tk):
         row2.pack(fill="x", pady=2)
         make_check(row2, "커스텀 모드", self.is_custom_mode).pack(side="left", padx=(0, 8))
         make_check(row2, "도면 작성 (DXF)", self.is_create_dxf).pack(side="left")
+        # 도면 축척: 'CSV 저장' 때 도면 작성(DXF)을 켜면 같은 폴더에 평면도·종단면도 저장
+        self.plan_scale_var = tk.StringVar(value="1000")
+        self.profile_v_scale_var = tk.StringVar(value="100")
+        row_sc = tk.Frame(c_body2, bg=PALETTE["surface2"])
+        row_sc.pack(fill="x", pady=(2, 0))
+        make_entry(row_sc, "평면 축척 1:", self.plan_scale_var, width=6).pack(side="left", fill="x", expand=True)
+        make_entry(row_sc, "종단 수직 축척 1:", self.profile_v_scale_var, width=6).pack(side="left", fill="x",
+                                                                                expand=True)
         make_button(c_body2, "커스텀 데이터셋 지정", self.select_custom_dataset).pack(fill="x", pady=(4, 0))
 
         # 자동 배치 에어조인트 방식: 단주(전주 1개에 브래킷 2개) / 복주(2·3·4호주에 전주 2개, 레거시 방식)
@@ -688,6 +696,28 @@ class AutoPoleApp(tk.Tk):
         self.log_append("트랙 속성 갱신 완료", "SUCCESS")
         self._set_status("트랙 갱신 완료")
 
+    def drawing_settings(self):
+        """입력한 도면 축척 → DrawingSettings (숫자가 아니거나 0 이하면 ValueError)"""
+        from core.drawing import DrawingSettings
+        try:
+            plan, vertical = float(self.plan_scale_var.get()), float(self.profile_v_scale_var.get())
+        except ValueError:
+            raise ValueError('도면 축척은 숫자로 입력하세요 (예: 평면 1000, 종단 수직 100).') from None
+        return DrawingSettings(plan_scale=plan, profile_v_scale=vertical)
+
+    def save_drawings(self, folder):
+        """평면도·종단면도(DXF) 저장. 실패해도 CSV 저장은 유지하고 오류만 알림"""
+        from core.drawing import export_drawings
+        try:
+            files = export_drawings(self.runner, folder, self.drawing_settings())
+        except Exception as e:  # noqa: BLE001 - 도면 실패가 CSV 저장을 막지 않도록
+            messagebox.showerror('도면 저장 실패', str(e))
+            self.log_append(f"❌ 도면 저장 실패: {e}", "ERROR")
+            return []
+        for path in files:
+            self.log_append(f"✅ 도면 저장 → {path}", "SUCCESS")
+        return files
+
     def select_object_root(self):
         """전주 미리보기·도면 저장에 쓰는 BVE Object 폴더 지정 (PC별 설정, ~/.decatsbve/settings.json)"""
         from file_io import user_settings
@@ -758,6 +788,8 @@ class AutoPoleApp(tk.Tk):
                     write_to_file(self.runner.pole_path_sub, s)
                     write_to_file(self.runner.wire_path_sub, s2)
                 self.runner.log("txt 저장 성공!")
+                if self.is_create_dxf.get():
+                    self.save_drawings(main_path)
                 errors = list(self.runner.polesaver_main.errors)
                 if self.runner.track_mode == "double":
                     errors += [f'[상선] {e}' for e in self.runner.polesaver_sub.errors]

@@ -571,6 +571,29 @@ else:
     print(f"[{'OK' if not de.doc.dirty else 'FAIL'}] 데이터셋 편집기: 수정·경간표·검사·저장 후 커스텀 사용")
     de.close()
 
+# 10) 도면(DXF): 'CSV 저장' 때 쓰는 도면 저장 — 축척 입력·평면도/종단면도 파일 (ezdxf 있을 때)
+try:
+    import ezdxf  # noqa: F401,E402
+except ImportError:
+    print('[SKIP] 도면 저장: ezdxf 없음')
+else:
+    import tempfile  # noqa: E402
+    app.plan_scale_var.set('abc')
+    try:
+        app.drawing_settings()
+        failures.append('잘못된 도면 축척이 거부되지 않음')
+    except ValueError:
+        pass
+    app.plan_scale_var.set('1200'); app.profile_v_scale_var.set('200')
+    with tempfile.TemporaryDirectory() as tmp_dwg:
+        files = app.save_drawings(tmp_dwg)
+        names = sorted(os.path.basename(f) for f in files)
+        want = ['종단면도_본선.dxf', '평면도.dxf'] + (['종단면도_상선.dxf'] if runner.poledata.get('sub') else [])
+        if names != sorted(want) or not all(os.path.getsize(f) > 1000 for f in files):
+            failures.append(f'도면 저장 결과 이상: {names}')
+        else:
+            print(f'[OK] 도면 저장: {", ".join(names)} (평면 1:1200, 종단 수직 1:200)')
+
 app.destroy()
 print('RESULT', 'PASS' if not failures else f'FAIL {failures}')
 sys.exit(1 if failures else 0)
