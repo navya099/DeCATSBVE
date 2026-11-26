@@ -1,6 +1,7 @@
 from core.mast.base.mast_base import MastBase
 from core.mast.mast_accessory.accessory_builder import AccessoryBuilder
 from core.mast.mastdata import Mast
+from enums.component_role import ComponentRole
 from core.pole.poledata import PoleDATA
 from dataset.dataset_getter import DatasetGetter
 
@@ -42,10 +43,14 @@ class MASTBuilder:
             accessories += AccessoryBuilder.build(dataprocessor, idxlib, '완철용', size, pole.structure, rotation,
                                                pole.gauge)
 
-        base = MastBase(name=foundation_name, index=foundation_idx, offset=(pole.gauge,0), rotation=rotation)
+        base = MastBase(name=foundation_name, index=foundation_idx, offset=(pole.gauge,0), rotation=rotation,
+                        role=ComponentRole.FOUNDATION)
 
 
-        return Mast(name=mast_name, index=mast_index, offset=(pole.gauge,yoffset), rotation=rotation, base=base, accessories=accessories)
+        tunnel = pole.structure == '터널'           # 터널은 기둥 대신 하수강 (규격 P10/P12 는 밴드용 구분이라 기록 안 함)
+        return Mast(name=mast_name, index=mast_index, offset=(pole.gauge,yoffset), rotation=rotation, base=base,
+                    accessories=accessories, role=ComponentRole.HANGER if tunnel else ComponentRole.MAST,
+                    spec='' if tunnel else size)
 
     @staticmethod
     def get_yoffset(dataprocessor, structure: str) -> float:

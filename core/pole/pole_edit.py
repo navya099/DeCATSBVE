@@ -26,6 +26,7 @@ from core.mast.base.mast_base import MastBase
 from core.mast.mast_accessory.mast_accessory import MastAccessory
 from core.pole.normal_section_processor import NormalSectionProcessor
 from core.pole.tunnel_section_processor import TunnelSectionProcessor
+from enums.component_role import ComponentRole, infer_role, known_indices
 from enums.section_type import AIRSECTION_SINGLE, SectionType
 from core.alignment.alignment import as_alignment
 
@@ -45,6 +46,12 @@ class ComponentRow:
     detail: str          # 장비 종류 등
     editable: bool
     parent: str | None = None   # 피팅의 브래킷 키
+    role: str = ''              # 구성품 역할 (enums.component_role)
+    spec: str = ''              # 형식·위치 (I/O, L/R …)
+
+    @property
+    def role_text(self):
+        return f'{self.role} {self.spec}'.strip() if self.role else ''
 
 
 # ── 조회 ────────────────────────────────────────────
@@ -56,19 +63,23 @@ TWIN = 'twin/'   # 복주 두 번째 전주 구성품 키 접두어
 TWIN_TEXT = ('앞 전주', '뒤 전주')
 
 
+def _role(obj):
+    return {'role': str(getattr(obj, 'role', '') or ''), 'spec': str(getattr(obj, 'spec', '') or '')}
+
+
 def _mast_rows(mast, prefix='', detail=''):
     rows = []
     if mast is None:
         return rows
     rows.append(ComponentRow(f'{prefix}mast', 'mast', mast.name, mast.index, tuple(_xy(mast.offset)), mast.rotation,
-                             detail, True))
+                             detail, True, **_role(mast)))
     if mast.base is not None:
         b = mast.base
         rows.append(ComponentRow(f'{prefix}base', 'base', b.name, b.index, tuple(_xy(b.offset)), b.rotation, detail,
-                                 True))
+                                 True, **_role(b)))
     for i, acc in enumerate(mast.accessories or []):
         rows.append(ComponentRow(f'{prefix}acc:{i}', 'acc', acc.name, acc.index, tuple(_xy(acc.offset)), acc.rotation,
-                                 detail, True))
+                                 detail, True, **_role(acc)))
     return rows
 
 
@@ -82,18 +93,19 @@ def components(pole):
         if twin is not None:
             detail = f'{detail} ({TWIN_TEXT[1] if getattr(br, "on_twin", False) else TWIN_TEXT[0]})'.strip()
         rows.append(ComponentRow(key, 'br', br.bracket_name, br.index, tuple(_xy(br.offset)), br.rotation,
-                                 detail, True))
+                                 detail, True, **_role(br)))
         for j, fit in enumerate(br.fittings):
             rows.append(ComponentRow(f'{key}/fit:{j}', 'fit', fit.label, fit.index, tuple(_xy(fit.offset)),
-                                     fit.rotation, '', True, parent=key))
+                                     fit.rotation, '', True, parent=key, **_role(fit)))
     for i, eq in enumerate(pole.equipments):
         rows.append(ComponentRow(f'eq:{i}', 'eq', eq.name, eq.index, tuple(_xy(eq.offset)), eq.rotation, eq.type,
-                                 eq.type not in READ_ONLY_EQUIPMENT_TYPES))
+                                 eq.type not in READ_ONLY_EQUIPMENT_TYPES, **_role(eq)))
     if twin is not None:
         rows += _mast_rows(twin.mast, TWIN, TWIN_TEXT[1])
         for i, eq in enumerate(twin.equipments):
             rows.append(ComponentRow(f'{TWIN}eq:{i}', 'eq', eq.name, eq.index, tuple(_xy(eq.offset)), eq.rotation,
-                                     f'{eq.type} ({TWIN_TEXT[1]})', eq.type not in READ_ONLY_EQUIPMENT_TYPES))
+                                     f'{eq.type} ({TWIN_TEXT[1]})', eq.type not in READ_ONLY_EQUIPMENT_TYPES,
+                                     **_role(eq)))
     return rows
 
 
@@ -211,14 +223,19 @@ def add_component(runner, pole, kind, name=None, index=None, offset=(0.0, 0.0), 
     rotation = float(rotation)
     on_twin = parent is not None and parent.startswith(TWIN.rstrip('/')) and getattr(pole, 'twin', None) is not None
     if kind == 'br':
-        pole.brackets.append(BracketDATA(bracket_type=pole.base_type, index=index, offset=offset,
-                                         rotation=rotation, bracket_name=name, on_twin=on_twin))
+        bracket = BracketDATA(bracket_type=pole.base_type, index=index, offset=offset, rotation=rotation,
+                              bracket_name=name, on_twin=on_twin)
+        bracket.role, bracket.spec = infer_role('br', bracket)
+        pole.brackets.append(bracket)
         return f'br:{len(pole.brackets) - 1}'
     if kind == 'fit':
         if not parent or not parent.startswith('br:') or '/fit:' in parent:
             raise ValueError('피팅을 추가할 브래킷을 선택하세요.')
         br = _get(pole, parent)
-        br.fittings.append(FittingDATA(index=index, offset=offset, rotation=rotation, label=name))
+        fitting = FittingDATA(index=index, offset=offset, rotation=rotation, label=name)
+        fitting.role, fitting.spec = infer_role('fit', fitting, known_indices(runner.dataprocessor)
+                                                if getattr(runner, 'dataprocessor', None) is not None else None)
+        br.fittings.append(fitting)
         return f'{parent}/fit:{len(br.fittings) - 1}'
     holder, prefix = pole, ''
     if parent is not None and parent.startswith(TWIN.rstrip('/')):   # 'twin' 또는 'twin/...' : 복주 두 번째 전주
@@ -228,15 +245,19 @@ def add_component(runner, pole, kind, name=None, index=None, offset=(0.0, 0.0), 
     if kind == 'eq':
         if equipment_type in READ_ONLY_EQUIPMENT_TYPES:
             raise ValueError(f'{equipment_type} 는 흐름방지장치 추가 기능으로 설치하세요.')
-        holder.equipments.append(EquipmentDATA(name=name, index=index, offset=offset, rotation=rotation,
-                                               type=equipment_type or '기타장비'))
+        equipment = EquipmentDATA(name=name, index=index, offset=offset, rotation=rotation,
+                                  type=equipment_type or '기타장비')
+        equipment.role, equipment.spec = infer_role('eq', equipment)
+        holder.equipments.append(equipment)
         return f'{prefix}eq:{len(holder.equipments) - 1}'
     # acc
     if holder.mast is None:
         raise ValueError('기둥이 없는 전주에는 부속을 추가할 수 없습니다.')
     if holder.mast.accessories is None:
         holder.mast.accessories = []
-    holder.mast.accessories.append(MastAccessory(name=name, index=index, offset=offset, rotation=rotation))
+    accessory = MastAccessory(name=name, index=index, offset=offset, rotation=rotation)
+    accessory.role, accessory.spec = infer_role('acc', accessory)
+    holder.mast.accessories.append(accessory)
     return f'{prefix}acc:{len(holder.mast.accessories) - 1}'
 
 
@@ -276,7 +297,7 @@ def set_base(runner, pole, name=None, index=None, twin=False):
     name, index = resolve(runner.idxlib, name, index)
     if holder.mast.base is None:
         holder.mast.base = MastBase(name=name, index=index, offset=(_xy(holder.mast.offset)[0], 0.0),
-                                    rotation=holder.mast.rotation)
+                                    rotation=holder.mast.rotation, role=ComponentRole.FOUNDATION)
     else:
         holder.mast.base.name, holder.mast.base.index = name, index
 

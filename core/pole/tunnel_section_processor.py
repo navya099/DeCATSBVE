@@ -1,4 +1,5 @@
 from core.equipment.equipment_data import EquipmentDATA
+from enums.component_role import ComponentRole
 from core.mast.mast_builder import MASTBuilder
 from core.pole.curve_section_processor import CurveSectionProcessor
 from core.pole.straight_section_processor import StraightSectionProcessor
@@ -35,6 +36,6 @@ class TunnelSectionProcessor:
 
         equipment = EquipmentDATA(name=feeder_name, index=feeder_idx,
                                   offset=(pole.gauge * -1, 0), rotation=feeder_rotation,
-                                  type='급전선설비')
+                                  type='급전선설비', role=ComponentRole.FEEDER)
         pole.mast = mast
         pole.equipments.append(equipment)

@@ -1,4 +1,5 @@
 from core.bracket.bracket_data import BracketDATA
+from enums.component_role import ComponentRole
 
 class BracketCreator:
     @staticmethod
@@ -12,7 +13,9 @@ class BracketCreator:
             bracket_type=bracket_type,
             index=bracket_index,
             bracket_name=bracket_name,
-            rotation=rotation
+            rotation=rotation,
+            role=ComponentRole.BRACKET,
+            spec=bracket_type,
         )
         bracket.stagger = stagger
         return bracket

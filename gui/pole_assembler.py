@@ -15,7 +15,7 @@ from event.events import MODEL_CHANGED, POLE_SELECTED
 
 TRACK_TEXT = {'main': '본선', 'sub': '상선'}
 ADD_KIND_TEXT = {'브래킷': 'br', '피팅 (선택한 브래킷에)': 'fit', '장비': 'eq', '밴드/부속': 'acc'}
-COLUMNS = (("kind", "종류", 90), ("name", "이름", 230), ("index", "인덱스", 60),
+COLUMNS = (("kind", "종류", 90), ("role", "역할", 130), ("name", "이름", 230), ("index", "인덱스", 60),
            ("x", "x", 70), ("y", "y", 70), ("rot", "회전", 70), ("detail", "비고", 110))
 
 
@@ -28,7 +28,7 @@ class PoleEditor(tk.Toplevel):
         """selection: 처음 보여줄 전주 (EditablePole 또는 PoleDATA)"""
         super().__init__()
         self.title("전주 상세 편집")
-        self.geometry("860x640")
+        self.geometry("990x640")
         self.runner = runner
         self.event = event
         self.pole = None
@@ -174,7 +174,7 @@ class PoleEditor(tk.Toplevel):
             parent = r.parent if r.parent and self.tree.exists(r.parent) else ""
             detail = r.detail + ('' if r.editable else ' (자동, 읽기 전용)')
             self.tree.insert(parent, "end", iid=r.key, open=True, tags=('' if r.editable else 'readonly',), values=(
-                pole_edit.KIND_TEXT[r.kind], r.name, '' if r.index is None else r.index,
+                pole_edit.KIND_TEXT[r.kind], r.role_text, r.name, '' if r.index is None else r.index,
                 _fmt(r.offset[0]), _fmt(r.offset[1]), _fmt(r.rotation), detail))
         if self.selected_key and self.tree.exists(self.selected_key):
             self.tree.selection_set(self.selected_key)

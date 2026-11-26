@@ -6,12 +6,12 @@
         종단선형, 전주(사각형, 이름의 규격·길이), 브래킷 지지점(○), 전주 정보,
         전선(전차선·조가선·무효선·급전선·보호선…). 전선은 지지점 사이 직선 (이도 표현 없음)
 """
-import ezdxf
-
 from core.alignment.alignment import as_alignment
 from core.drawing.settings import LAYERS, mast_dimensions, wire_layer
 from core.model_rebuilder import alignment_for
 from core.pole import pole_units
+from enums.component_role import ComponentRole
+from enums.section_type import SectionType
 
 TEXT_STYLE = 'KOREAN'
 # 전선 객체에 조가선이 함께 들어 있는 전차선 (따로 '조가선' 전선이 없으면 조가선을 가고만큼 위에 그림)
@@ -19,6 +19,7 @@ CATENARY_LABELS = ('전차선', '본선전차선', '무효->본선전차선')
 
 
 def new_document():
+    import ezdxf          # 도면을 만들 때만 필요 (전주 정보·약어 함수는 ezdxf 없이도 사용)
     doc = ezdxf.new('R2010', setup=True)
     doc.units = ezdxf.units.M
     doc.styles.add(TEXT_STYLE, font='malgun.ttf')       # 한글 (윈도 맑은 고딕)
@@ -32,9 +33,27 @@ def _layer(key):
     return {'layer': LAYERS[key][0]}
 
 
+def bracket_abbr(pole, bracket):
+    """브래킷 약어 (레거시 도면 표기): 일반 I/O, F형 F, 평행 개소 AJ-I/AJ-O (에어섹션은 AS-I/AS-O)"""
+    role = getattr(bracket, 'role', '')
+    spec = getattr(bracket, 'spec', '') or str(bracket.bracket_type or '')
+    if role == ComponentRole.BRACKET_F:
+        return 'F'
+    if role == ComponentRole.BRACKET_AJ:
+        section = SectionType.parse(pole.section)
+        prefix = 'AS' if section is not None and section.is_airsection else 'AJ'
+        return f'{prefix}-{spec}' if spec else prefix
+    if role == ComponentRole.BRACKET:
+        return spec
+    return bracket.bracket_name or spec
+
+
 def _label_text(pole):
-    brackets = ', '.join(b.bracket_name or str(b.bracket_type or '') for b in pole.brackets or [])
-    mast = pole.mast.name if pole.mast is not None else ''
+    """전주 정보: 전주번호 / 측점 / 브래킷 약어 / 전주(기둥) 이름"""
+    brackets = ', '.join(bracket_abbr(pole, b) for b in pole.brackets or [])
+    mast = pole.mast.name if pole.mast is not None else next(       # 터널 평행 개소: 브래킷을 다는 하수강
+        (f.label for b in pole.brackets or [] for f in b.fittings or []
+         if getattr(f, 'role', '') == ComponentRole.HANGER and f.label), '')
     return f'{pole.post_number}\\P{pole.pos}\\P{brackets}\\P{mast}'
 
 

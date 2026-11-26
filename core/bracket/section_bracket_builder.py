@@ -12,6 +12,7 @@ from core.mast.mast_builder import MASTBuilder
 from core.pole.normal_section_processor import NormalSectionProcessor
 from core.pole.poledata import PoleDATA
 from core.pole.tunnel_section_processor import TunnelSectionProcessor
+from enums.component_role import EQUIPMENT_TYPE_ROLE, ComponentRole
 
 
 class SectionBracketBuilder:
@@ -60,11 +61,11 @@ class SectionBracketBuilder:
             rotation = 180 + al.wire_angle(pole.pos, pole.next_pos, x, pole.next_gauge)
             guy_rotation = 180
         pole.equipments.append(EquipmentDATA(name=self.idxlib.get_name(index), index=index, offset=(pole.gauge, 0),
-                                             rotation=rotation, type=equipment))
+                                             rotation=rotation, type=equipment, role=EQUIPMENT_TYPE_ROLE[equipment]))
         if pole.structure != '터널':
             guy = self.prosc.get_equipment_index('지선')
             pole.equipments.append(EquipmentDATA(name=self.idxlib.get_name(guy), index=guy, offset=(pole.gauge, 0),
-                                                 rotation=guy_rotation, type='지선설비'))
+                                                 rotation=guy_rotation, type='지선설비', role=ComponentRole.GUY))
 
     def add_common_equipts(self, pole):
         """평행 개소 공통 설비: 기둥(터널 제외), 급전선설비, 평행틀(터널 제외)"""
@@ -72,14 +73,14 @@ class SectionBracketBuilder:
         if pole.structure == '터널':
             feeder_rotation = 180 if pole.side == -1 else 0
             pole.equipments.append(EquipmentDATA(name=p.feeder_name, index=p.feeder_idx, offset=(pole.gauge * -1, 0),
-                                                 rotation=feeder_rotation, type='급전선설비'))
+                                                 rotation=feeder_rotation, type='급전선설비', role=ComponentRole.FEEDER))
             return
         mast_rotation = 180 if pole.side == 1 else 0
         pole.mast = MASTBuilder.build(pole, dataprocessor=self.prosc, idxlib=self.idxlib, rotation=mast_rotation)
         pole.equipments.append(EquipmentDATA(name=p.feeder_name, index=p.feeder_idx, offset=(pole.gauge, 0),
-                                             rotation=mast_rotation, type='급전선설비'))
+                                             rotation=mast_rotation, type='급전선설비', role=ComponentRole.FEEDER))
         pole.equipments.append(EquipmentDATA(name=p.spreader_name, index=p.spreader_idx, offset=(pole.gauge, 0),
-                                             rotation=mast_rotation, type='평행틀'))
+                                             rotation=mast_rotation, type='평행틀', role=ComponentRole.SPREADER))
 
     # ── 브래킷 ──────────────────────────────────────
     def _cw_mw_heights(self, pole):
@@ -89,24 +90,27 @@ class SectionBracketBuilder:
     def _tunnel_hanger(self, pole, bracket, rotation):
         """터널: 브래킷을 다는 H형강 하수강 (기둥 대신)"""
         if pole.structure == '터널':
-            self.add_bracket_fittng(bracket, self.params.mast_type, self.params.mast_name, (pole.gauge, 0), rotation)
+            self.add_bracket_fittng(bracket, self.params.mast_type, self.params.mast_name, (pole.gauge, 0), rotation,
+                                    ComponentRole.HANGER)
 
-    def add_f_bracket(self, pole: PoleDATA, bracket_code, x1, y1):
+    def add_f_bracket(self, pole: PoleDATA, bracket_code, x1, y1, spec=''):
         """F형 가동 브래킷(무효선 인상) 및 금구류"""
         p = self.params
         rotation = 180 if pole.side == 1 else 0
         cw_height, mw_height = self._cw_mw_heights(pole)
         h = p.f_bracket_height
         bracket = BracketDATA(bracket_type='F', index=bracket_code, bracket_name=self.idxlib.get_name(bracket_code),
-                              offset=(0, h), rotation=rotation)
+                              offset=(0, h), rotation=rotation, role=ComponentRole.BRACKET_F, spec=spec)
         cw_fitting = p.contact_wire_fitting
         mw_fitting = p.messenger_wire_fittings['무효인상용']
         steady_arm = (p.steady_arm_fitting.get('F') or {}).get('R')
-        self.add_bracket_fittng(bracket, cw_fitting, self.idxlib.get_name(cw_fitting), (x1, cw_height + y1), rotation)
-        self.add_bracket_fittng(bracket, mw_fitting, self.idxlib.get_name(mw_fitting), (x1, mw_height + h), rotation)
+        self.add_bracket_fittng(bracket, cw_fitting, self.idxlib.get_name(cw_fitting), (x1, cw_height + y1), rotation,
+                                ComponentRole.FIT_CW)
+        self.add_bracket_fittng(bracket, mw_fitting, self.idxlib.get_name(mw_fitting), (x1, mw_height + h), rotation,
+                                ComponentRole.FIT_MW, '무효인상용')
         if steady_arm:
             self.add_bracket_fittng(bracket, steady_arm, self.idxlib.get_name(steady_arm), (x1, y1 + cw_height),
-                                    rotation)
+                                    rotation, ComponentRole.FIT_STEADY, 'R')
         self._tunnel_hanger(pole, bracket, rotation)
         pole.brackets.append(bracket)
 
@@ -116,11 +120,13 @@ class SectionBracketBuilder:
         rotation = 180 if pole.side == 1 else 0
         cw_height, mw_height = self._cw_mw_heights(pole)
         bracket = BracketDATA(bracket_type='AJ', index=bracket_code, bracket_name=self.idxlib.get_name(bracket_code),
-                              offset=(0, y1), rotation=rotation)
+                              offset=(0, y1), rotation=rotation, role=ComponentRole.BRACKET_AJ, spec=bracket_type)
         mw_fitting = p.messenger_wire_fittings['에어조인트용']
         steady_arm = p.steady_arm_fitting[bracket_type]['R' if end else 'L']
-        self.add_bracket_fittng(bracket, mw_fitting, self.idxlib.get_name(mw_fitting), (x1, mw_height + y1), rotation)
-        self.add_bracket_fittng(bracket, steady_arm, self.idxlib.get_name(steady_arm), (x1, cw_height), rotation)
+        self.add_bracket_fittng(bracket, mw_fitting, self.idxlib.get_name(mw_fitting), (x1, mw_height + y1), rotation,
+                                ComponentRole.FIT_MW, '에어조인트용')
+        self.add_bracket_fittng(bracket, steady_arm, self.idxlib.get_name(steady_arm), (x1, cw_height), rotation,
+                                ComponentRole.FIT_STEADY, 'R' if end else 'L')
         self._tunnel_hanger(pole, bracket, rotation)
         pole.brackets.append(bracket)
 
@@ -136,5 +142,6 @@ class SectionBracketBuilder:
         self.add_paired_bracket(pole, type2, values.get(type2), x, y, end=True)
 
     @staticmethod
-    def add_bracket_fittng(bracket, idx, label, offset, rotation):
-        bracket.fittings.append(FittingDATA(index=idx, label=label, offset=offset, rotation=rotation))
+    def add_bracket_fittng(bracket, idx, label, offset, rotation, role='', spec=''):
+        bracket.fittings.append(FittingDATA(index=idx, label=label, offset=offset, rotation=rotation, role=role,
+                                            spec=spec))

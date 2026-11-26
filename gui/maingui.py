@@ -417,6 +417,7 @@ class AutoPoleApp(tk.Tk):
             ("데이터셋 불러오기", self.on_load_dataset,      "normal"),
             ("데이터셋 편집",    self.edit_dataset,          "normal"),
             ("BVE Object 폴더 지정", self.select_object_root, "normal"),
+            ("물량표 저장 (CSV)", self.save_bom, "normal"),
             ("로그 클리어",      self.clear_log,             "warning"),
         ]
         for txt, cmd, sty, *enabled in util_buttons:
@@ -717,6 +718,27 @@ class AutoPoleApp(tk.Tk):
         for path in files:
             self.log_append(f"✅ 도면 저장 → {path}", "SUCCESS")
         return files
+
+    def save_bom(self, path=None):
+        """구성품 역할별 물량표(CSV) 저장 — 전주·브래킷·금구·설비 수량, 전선 경간 수·길이"""
+        from core.quantities import bill_of_quantities, write_bom_csv
+        if not self.runner or not self.runner.poledata:
+            messagebox.showwarning('물량표', '저장할 데이터가 없습니다. 먼저 실행하세요.')
+            return None
+        path = path or asksaveasfilename(title='물량표 저장', initialfile='물량표.csv', defaultextension='.csv',
+                                         filetypes=[('CSV', '*.csv')])
+        if not path:
+            return None
+        try:
+            rows = bill_of_quantities(self.runner)
+            write_bom_csv(rows, path)
+        except Exception as e:  # noqa: BLE001
+            messagebox.showerror('물량표 저장 실패', str(e))
+            self.log_append(f"❌ 물량표 저장 실패: {e}", "ERROR")
+            return None
+        self.log_append(f"✅ 물량표 저장 ({len(rows)}행) → {path}", "SUCCESS")
+        self._set_status("물량표 저장 완료")
+        return path
 
     def select_object_root(self):
         """전주 미리보기·도면 저장에 쓰는 BVE Object 폴더 지정 (PC별 설정, ~/.decatsbve/settings.json)"""

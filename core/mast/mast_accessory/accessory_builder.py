@@ -1,4 +1,7 @@
 from core.mast.mast_accessory.mast_accessory import MastAccessory
+from enums.component_role import ComponentRole
+
+BAND_ROLE = {"가동브래킷용": ComponentRole.BAND_BRACKET, "완철용": ComponentRole.BAND_ARM}
 
 
 class AccessoryBuilder:
@@ -15,12 +18,14 @@ class AccessoryBuilder:
                         idx = band_dict[pos]
                         name = idxlib.get_name(idx)
                         offset = offset_dict[pos]
-                        accessories.append(MastAccessory(name=name, index=idx, rotation=rotation, offset=(gauge, offset)))
+                        accessories.append(MastAccessory(name=name, index=idx, rotation=rotation, offset=(gauge, offset),
+                                                         role=BAND_ROLE[band_type], spec=str(pos)))
                 else:  # 단일 밴드
                     idx = band_dict
                     name = idxlib.get_name(idx)
                     offset = offset_dict
-                    accessories.append(MastAccessory(name=name, index=idx, rotation=rotation, offset=(gauge, offset)))
+                    accessories.append(MastAccessory(name=name, index=idx, rotation=rotation, offset=(gauge, offset),
+                                                     role=BAND_ROLE[band_type]))
 
             # 기타 밴드 타입 처리 (안전하게 확장)
         else:
@@ -33,6 +38,7 @@ class AccessoryBuilder:
                 name = idxlib.get_name(idx)
                 offset = offset_sub.get(structure, 0)
                 accessories.append(
-                    MastAccessory(name=name, index=idx, rotation=rotation, offset=(gauge, offset)))
+                    MastAccessory(name=name, index=idx, rotation=rotation, offset=(gauge, offset),
+                                  role=ComponentRole.BAND, spec=str(sub_type)))
 
         return accessories

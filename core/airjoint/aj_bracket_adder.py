@@ -43,12 +43,12 @@ class AirjointBracketAdder(SectionBracketBuilder):
         f_bracket, aj_bracket = self.params.f_bracket_valuse, self.params.aj_bracket_values
         pole.brackets.clear()
         if not end:
-            self.add_f_bracket(pole, f_bracket['I'], *self.side_offset(pole, 'F형_시점', flip_side=-1))
+            self.add_f_bracket(pole, f_bracket['I'], *self.side_offset(pole, 'F형_시점', flip_side=-1), spec='I')
             self.add_paired_bracket(pole, 'I', aj_bracket['I'], *self.side_offset(pole, 'AJ형_시점', flip_side=-1))
         else:
             self.add_paired_bracket(pole, 'O', aj_bracket['O'], *self.side_offset(pole, 'AJ형_끝', flip_side=1),
                                     end=True)
-            self.add_f_bracket(pole, f_bracket['O'], *self.side_offset(pole, 'F형_끝', flip_side=1))
+            self.add_f_bracket(pole, f_bracket['O'], *self.side_offset(pole, 'F형_끝', flip_side=1), spec='O')
 
     # 이전 이름 호환
     add_aj_bracket = SectionBracketBuilder.add_paired_bracket

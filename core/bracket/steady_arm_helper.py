@@ -1,4 +1,5 @@
 from core.bracket.fitting_data import FittingDATA
+from enums.component_role import ComponentRole
 
 
 class SteadyArmHelper:
@@ -11,11 +12,14 @@ class SteadyArmHelper:
     @staticmethod
     def create_fitting(pole, dataprocessor, idxlib, stagger, cw_height, rotation):
         steady_arm_index = SteadyArmHelper.get_index(dataprocessor, pole.base_type)
+        side = 'L' if pole.base_type == 'I' else 'R'
         steady_arm_name = idxlib.get_name(steady_arm_index)
 
         return FittingDATA(
             index=steady_arm_index,
             offset=(stagger, cw_height),
             rotation=rotation,
-            label=steady_arm_name
+            label=steady_arm_name,
+            role=ComponentRole.FIT_STEADY,
+            spec=side,
         )

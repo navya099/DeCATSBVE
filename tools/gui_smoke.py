@@ -594,6 +594,19 @@ else:
         else:
             print(f'[OK] 도면 저장: {", ".join(names)} (평면 1:1200, 종단 수직 1:200)')
 
+# 11) 물량표(CSV): 구성품 역할별 수량
+import tempfile as _tf  # noqa: E402
+with _tf.TemporaryDirectory() as tmp_bom:
+    path = app.save_bom(os.path.join(tmp_bom, '물량표.csv'))
+    import csv as _csv  # noqa: E402
+    with open(path, encoding='utf-8-sig') as f:
+        bom = list(_csv.DictReader(f))
+    n_masts = sum(int(r['수량']) for r in bom if r['역할'] in ('기둥', '하수강') and r['분류'] == '전주')
+    if not bom or n_masts < sum(len(ps) for ps in runner.poledata.values()) - 5:
+        failures.append(f'물량표 이상: {len(bom)}행, 기둥 {n_masts}')
+    else:
+        print(f'[OK] 물량표: {len(bom)}행, 기둥·하수강 {n_masts}')
+
 app.destroy()
 print('RESULT', 'PASS' if not failures else f'FAIL {failures}')
 sys.exit(1 if failures else 0)
