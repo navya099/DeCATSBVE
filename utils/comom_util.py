@@ -3,7 +3,6 @@ import math
 
 
 from utils.math_util import return_new_point
-from enums.section_type import SectionType
 
 
 def find_last_block(data):
@@ -85,7 +84,10 @@ def distribute_pole_spacing_flexible(start_m, end_m, curvelist=None,structure_li
         positions.append(current_pos)
     return positions
 
-def define_airjoint_section(positions, airjoint_span):
+def define_airjoint_section(positions, airjoint_span, tags=None):
+    """airjoint_span 배수 근처마다 에어조인트 구간(전주 5개)을 지정. tags: 전주별 구간 값 (기본 단주 2경간)"""
+    from enums.section_type import AIRJOINT_SEQUENCE
+    tags = tuple(tags or AIRJOINT_SEQUENCE)
     airjoint_list = []  # 결과 리스트
 
     def is_near_multiple_of_DIG(number, tolerance=100):
@@ -99,14 +101,6 @@ def define_airjoint_section(positions, airjoint_span):
 
         if is_near_multiple_of_DIG(pos):  # 조건 충족 시
             next_values = positions[i + 1:min(i + 6, len(positions))]  # 다음 5개 값 가져오기
-            tags = [
-                SectionType.AJ_START,
-                SectionType.AJ_2,
-                SectionType.AJ_MIDDLE,
-                SectionType.AJ_4,
-                SectionType.AJ_END
-            ]
-
             # (전주 위치, 태그) 쌍을 리스트에 추가 (최대 5개까지만)
             airjoint_list.extend(list(zip(next_values, tags[:len(next_values)])))
 

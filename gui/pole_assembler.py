@@ -251,9 +251,10 @@ class PoleEditor(tk.Toplevel):
             # 이름을 바꿨는데 인덱스는 그대로면 이름 기준으로 다시 찾음
             if name and name != r.name and index == r.index:
                 index = None
-            if r.key == 'base':
-                pole_edit.set_base(self.runner, self.pole, name or None, index)
-                pole_edit.set_component(self.runner, self.pole, 'base', offset=offset, rotation=rotation)
+            if r.kind == 'base':
+                pole_edit.set_base(self.runner, self.pole, name or None, index,
+                                   twin=r.key.startswith(pole_edit.TWIN))
+                pole_edit.set_component(self.runner, self.pole, r.key, offset=offset, rotation=rotation)
             else:
                 pole_edit.set_component(self.runner, self.pole, r.key, name or None, index, offset, rotation)
             self._commit(f'{pole_edit.KIND_TEXT[r.kind]} 수정: {name or r.name}')
@@ -276,6 +277,8 @@ class PoleEditor(tk.Toplevel):
             parent = None
             if kind == 'fit':
                 parent = self.selected_key.split('/fit:')[0] if self.selected_key else None
+            elif self.selected_key and pole_edit.component_pole(self.pole, self.selected_key) == 1:
+                parent = 'twin'  # 복주: 뒤 전주 구성품을 선택한 상태면 뒤 전주에 추가
             self.selected_key = pole_edit.add_component(self.runner, self.pole, kind, name or None, index, offset,
                                                         rotation, parent=parent,
                                                         equipment_type=self.eqtype_var.get().strip() or '기타장비')

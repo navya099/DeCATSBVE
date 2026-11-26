@@ -33,6 +33,13 @@ class SectionType(_StrEnum):
     AJ_4 = "에어조인트 (4호주)"
     AJ_END = "에어조인트 끝점 (5호주)"
 
+    # 복주(複柱) 에어조인트: 2·3·4호주 위치에 전주 2개(브래킷 1개씩). 브래킷·전선 규칙은 단주와 같음 (role)
+    AJD_START = "복주 에어조인트 시작점 (1호주)"
+    AJD_2 = "복주 에어조인트 (2호주)"
+    AJD_MIDDLE = "복주 에어조인트 중간주 (3호주)"
+    AJD_4 = "복주 에어조인트 (4호주)"
+    AJD_END = "복주 에어조인트 끝점 (5호주)"
+
     AS1_1 = "에어섹션1구간_1호주"
     AS1_2 = "에어섹션1구간_2호주"
     AS1_3 = "에어섹션1구간_3호주"
@@ -46,7 +53,17 @@ class SectionType(_StrEnum):
 
     @property
     def is_airjoint(self):
-        return self in AIRJOINT_SEQUENCE
+        return self in AIRJOINT_SEQUENCE or self in AIRJOINT_DOUBLE_POLE_SEQUENCE
+
+    @property
+    def is_double_pole(self):
+        """복주 에어조인트 구간 전주"""
+        return self in AIRJOINT_DOUBLE_POLE_SEQUENCE
+
+    @property
+    def role(self):
+        """브래킷·전선 처리 기준 역할: 복주 에어조인트 값 → 같은 위치의 단주 에어조인트 값, 나머지는 자기 자신"""
+        return _DOUBLE_POLE_ROLE.get(self, self)
 
     @property
     def is_airsection(self):
@@ -55,10 +72,21 @@ class SectionType(_StrEnum):
 
 AIRJOINT_SEQUENCE = (SectionType.AJ_START, SectionType.AJ_2, SectionType.AJ_MIDDLE,
                      SectionType.AJ_4, SectionType.AJ_END)
+AIRJOINT_DOUBLE_POLE_SEQUENCE = (SectionType.AJD_START, SectionType.AJD_2, SectionType.AJD_MIDDLE,
+                                 SectionType.AJD_4, SectionType.AJD_END)
+_DOUBLE_POLE_ROLE = dict(zip(AIRJOINT_DOUBLE_POLE_SEQUENCE, AIRJOINT_SEQUENCE))
+# 복주로 2개가 서는 위치 (1·5호주는 단주와 같이 1개)
+DOUBLE_POLE_PAIRED_ROLES = (SectionType.AJ_2, SectionType.AJ_MIDDLE, SectionType.AJ_4)
 AIRSECTION_SINGLE = (SectionType.AS1_1, SectionType.AS1_2, SectionType.AS1_3, SectionType.AS1_4_S,
                      SectionType.AS1_5)
 AIRSECTION_DOUBLE = (SectionType.AS1_1, SectionType.AS1_2, SectionType.AS1_3, SectionType.AS1_4_D,
                      SectionType.AS2_1, SectionType.AS2_2, SectionType.AS2_3, SectionType.AS2_4)
+
+
+def section_role(section):
+    """구간 값(문자열·enum·None) → 처리 기준 역할 (복주 에어조인트는 단주 값). 일반개소/알 수 없음은 None"""
+    section = SectionType.parse(section)
+    return section.role if section is not None else None
 
 
 class FlowStop(_StrEnum):

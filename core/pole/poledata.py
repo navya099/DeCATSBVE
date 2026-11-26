@@ -12,6 +12,15 @@ def new_pole_uid() -> str:
 
 
 @dataclass
+class TwinPole:
+    """복주(複柱): 한 지지점에 선 두 번째 전주. 주 전주는 측점 − spacing/2, 이 전주는 측점 + spacing/2 에 선다.
+    브래킷은 PoleDATA.brackets 에 함께 두고 BracketDATA.on_twin 으로 어느 전주에 달렸는지 구분한다."""
+    spacing: float
+    mast: Mast | None = None
+    equipments: list[EquipmentDATA] = field(default_factory=list)
+
+
+@dataclass
 class PoleDATA:
     post_number: str
     pos: int
@@ -40,3 +49,13 @@ class PoleDATA:
     flowstop: FlowStop | None = None
     # 전주 고유 ID: 전주가 이동/재계산돼도 유지. 경간(Span) = (앞 전주 uid, 뒤 전주 uid)
     uid: str = field(default_factory=new_pole_uid)
+    # 복주 에어조인트의 두 번째 전주 (없으면 None)
+    twin: TwinPole | None = None
+
+    @property
+    def station_offsets(self):
+        """(주 전주, 두 번째 전주) 측점 보정값. 복주가 아니면 (0, None)"""
+        if self.twin is None:
+            return 0, None
+        half = self.twin.spacing / 2
+        return -half, half

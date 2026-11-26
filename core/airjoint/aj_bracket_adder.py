@@ -7,7 +7,7 @@ from core.pole.normal_section_processor import NormalSectionProcessor
 from core.pole.poledata import PoleDATA
 from core.pole.tunnel_section_processor import TunnelSectionProcessor
 from core.alignment.alignment import as_alignment
-from enums.section_type import SectionType
+from enums.section_type import SectionType, section_role
 
 
 class AirjointBracketAdder:
@@ -17,8 +17,9 @@ class AirjointBracketAdder:
         self.idxlib = idxlib
 
     def add_airjoint_brackets(self, pole: PoleDATA, polyline_with_sta):
-        """에어조인트 각 구간별 브래킷 추가"""
-        if pole.section == SectionType.AJ_START:
+        """에어조인트 각 구간별 브래킷 추가 (복주 에어조인트도 같은 위치 역할의 규칙 사용)"""
+        role = section_role(pole.section)
+        if role == SectionType.AJ_START:
             # START 구간 처리
             if pole.structure == '터널':
                 TunnelSectionProcessor.process(pole, self.prosc, self.idxlib)
@@ -35,22 +36,22 @@ class AirjointBracketAdder:
                 jiseon = self.idxlib.get_name(674)
                 pole.equipments.append(
                     EquipmentDATA(name=jiseon, index=674, offset=(pole.gauge, 0), rotation=0, type='지선설비'))
-        elif pole.section == SectionType.AJ_2:
+        elif role == SectionType.AJ_2:
             # POINT_2 구간 처리
             self.add_common_equipts(pole)
             self.add_f_and_aj_brackets(pole)
 
-        elif pole.section == SectionType.AJ_MIDDLE:
+        elif role == SectionType.AJ_MIDDLE:
             # MIDDLE 구간 처리
             self.add_common_equipts(pole)
             self.add_aj_brackets_middle(pole)
 
-        elif pole.section == SectionType.AJ_4:
+        elif role == SectionType.AJ_4:
             # POINT_4 구간 처리
             self.add_common_equipts(pole)
             self.add_f_and_aj_brackets(pole, end=True)
 
-        elif pole.section == SectionType.AJ_END:
+        elif role == SectionType.AJ_END:
             # END 구간 처리
             en = self.idxlib.get_name(1247)
             if pole.structure == '터널':

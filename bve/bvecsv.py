@@ -1,4 +1,4 @@
-from enums.section_type import SectionType
+from enums.section_type import SectionType, section_role
 from enums.section_type import section_label as section_label_of
 
 
@@ -86,15 +86,31 @@ class BVECSV:
                 self.lines.append(f',;{post_number}\n')
                 self.lines.append(f',;-----{section_label}({structure})({curve})-----\n')
 
-                if section in [SectionType.AJ_START, SectionType.AJ_END]:
+                if getattr(pole, 'twin', None) is not None:
+                    # 복주: 주 전주(측점 − 간격/2)와 두 번째 전주(측점 + 간격/2)에 기둥·설비·브래킷을 따로 기록
+                    front_offset, rear_offset = pole.station_offsets
+                    for offset, p_mast, p_eqs, on_twin in ((front_offset, mast, eqs, False),
+                                                           (rear_offset, pole.twin.mast, pole.twin.equipments, True)):
+                        p = round(pos + offset, 6)
+                        self.lines.append(f',;복주 {"뒤" if on_twin else "앞"} 전주\n')
+                        write_mast(p, p_mast)
+                        write_mast_accessories(p, p_mast)
+                        write_base(p, p_mast)
+                        write_equipment(p, p_eqs)
+                        for br in brs:
+                            if bool(getattr(br, 'on_twin', False)) == on_twin:
+                                self.lines.append(',;가동브래킷구문\n')
+                                write_brackets(p, [br])
+
+                elif section_role(section) in [SectionType.AJ_START, SectionType.AJ_END]:
                     write_mast(pos, mast)
                     write_mast_accessories(pos, mast)
                     write_base(pos, mast)
                     write_brackets(pos, [brs[0]])
                     write_equipment(pos, eqs)
 
-                elif section in [SectionType.AJ_2, SectionType.AJ_MIDDLE, SectionType.AJ_4]:
-                    poss = (pos - 0.528, pos + 0.528) if section in [SectionType.AJ_2, SectionType.AJ_4] else (
+                elif section_role(section) in [SectionType.AJ_2, SectionType.AJ_MIDDLE, SectionType.AJ_4]:
+                    poss = (pos - 0.528, pos + 0.528) if section_role(section) in [SectionType.AJ_2, SectionType.AJ_4] else (
                     pos - 0.8, pos + 0.8)
                     write_mast(pos, mast)
                     write_mast_accessories(pos, mast)

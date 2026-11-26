@@ -330,6 +330,7 @@ def _probe(ds):
     call('design.speed', g.get_design_speed, allow_none=False)
     call('bracket.fitting', g.get_fittings)
     call('airjoint.bracket_height', g.get_airjoint_f_bracket_height, allow_none=False)
+    call('airjoint.double_pole', g.get_double_pole_settings)  # 복주 에어조인트 (없으면 기본값)
     for key in ('F형_시점', 'AJ형_시점', 'AJ형_중간1', 'AJ형_중간2', 'AJ형_끝', 'F형_끝'):
         call(f'airjoint.offset.{key}', g.get_airjoint_offset, key, allow_none=False)
     for s in STRUCTURES:

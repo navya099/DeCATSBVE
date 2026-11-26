@@ -12,3 +12,4 @@ class BracketDATA:
     bracket_name: str = ""
     stagger: float = 0.0
     fittings: list[FittingDATA] = field(default_factory=list)
+    on_twin: bool = False   # 복주: 두 번째 전주(PoleDATA.twin)에 달린 브래킷

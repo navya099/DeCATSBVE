@@ -230,7 +230,7 @@ check(f'구간 편집: 에어조인트 삭제 {p.pos}')
 if [i for t in runner.poledata for i in sections(t, 'airjoint_2span') if i.start_pos == p.pos]:
     failures.append('에어조인트 삭제 안 됨')
 
-for kid, k in (('airsection_single', 5), ('airsection_double', 6)):
+for kid, k in (('airjoint_2span_double_pole', 4), ('airsection_single', 5), ('airsection_double', 6)):
     p = free_run('main', section_edit.SECTION_KINDS[kid].n_poles, k)
     select('main', p.pos)
     sx.track_var.set('본선'); sx.kind_var.set(section_edit.SECTION_KINDS[kid].label); sx.update_preview()
@@ -240,6 +240,9 @@ for kid, k in (('airsection_single', 5), ('airsection_double', 6)):
     if len(found) != 1:
         failures.append(f'{kid} 추가 안 됨')
         continue
+    if kid == 'airjoint_2span_double_pole' and [q.twin is not None for q in found[0].poles] != [False, True, True,
+                                                                                               True, False]:
+        failures.append('복주 에어조인트 2·3·4호주에 두 번째 전주가 없음')
     iid = next(i for i, inst in sx._instances.items() if inst.kind and inst.kind.id == kid and inst.start_pos == p.pos)
     sx.list_tree.selection_set(iid); sx.goto_selected(); app.update()
     if ed.selected_pole is None or ed.selected_pole.pole.pos != p.pos:

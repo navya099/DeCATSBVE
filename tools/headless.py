@@ -44,12 +44,14 @@ from dataset.dataset_getter import DatasetGetter  # noqa: E402
 from dataset.dataset_manager import load_dataset  # noqa: E402
 from xref_module.index_libmgr import IndexLibrary  # noqa: E402
 
+AIRJOINT_TYPES = ('single', 'double_pole')
 DEFAULTS = {
     'speed': 150, 'start': 0.0, 'end': None, 'brokenchain': 0.0,
     'mode': 'single', 'main_direction': 'L', 'tunnel_direction': 'L',
     'track_distance': 4.3, 'sub_rail': None, 'rail_info': None, 'idxlib': None, 'alignment': None,
     'coord': None, 'curve': None, 'pitch': None,
     'custom_json': None, 'custom_spandata': None,
+    'airjoint_type': 'single',   # 'single' 단주 | 'double_pole' 복주
 }
 PATH_KEYS = ('alignment', 'coord', 'curve', 'pitch', 'structure', 'rail_info', 'idxlib', 'custom_json',
              'custom_spandata')
@@ -112,6 +114,9 @@ def build_runner(cfg):
     r.end_station = float(cfg['end'] if cfg['end'] is not None else last_station(cfg['alignment'] or cfg['curve']))
     r.brokenchain = float(cfg['brokenchain'])
     r.idxlib = load_index_library(cfg['idxlib'])
+    if cfg['airjoint_type'] not in AIRJOINT_TYPES:
+        raise ValueError(f"airjoint_type 은 {'/'.join(AIRJOINT_TYPES)} 중 하나: {cfg['airjoint_type']}")
+    r.airjoint_type = cfg['airjoint_type']
 
     custom = bool(cfg['custom_json'])
     r.iscustommode = int(custom)

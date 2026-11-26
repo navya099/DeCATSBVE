@@ -318,6 +318,15 @@ class AutoPoleApp(tk.Tk):
         make_check(row2, "도면 작성 (DXF)", self.is_create_dxf).pack(side="left")
         make_button(c_body2, "커스텀 데이터셋 지정", self.select_custom_dataset).pack(fill="x", pady=(4, 0))
 
+        # 자동 배치 에어조인트 방식: 단주(전주 1개에 브래킷 2개) / 복주(2·3·4호주에 전주 2개, 레거시 방식)
+        self.airjoint_type = tk.StringVar(value="single")
+        tk.Label(c_body2, text="에어조인트 (자동 배치)", font=FONT_SMALL,
+                 fg=PALETTE["text_dim"], bg=PALETTE["surface2"]).pack(anchor="w", pady=(6, 0))
+        row_aj = tk.Frame(c_body2, bg=PALETTE["surface2"])
+        row_aj.pack(fill="x", pady=2)
+        make_radio(row_aj, "단주", self.airjoint_type, "single").pack(side="left", padx=(0, 8))
+        make_radio(row_aj, "복주", self.airjoint_type, "double_pole").pack(side="left")
+
         # ── 트랙 설정 ──
         c_outer3, c_body3 = card(sidebar, "🛤️ 트랙 설정")
         c_outer3.pack(fill="x", pady=4)
@@ -543,6 +552,7 @@ class AutoPoleApp(tk.Tk):
             self.runner.custom_dataset_json = self.custom_dataset_json
             self.runner.custom_spandata = self.custom_spandata
             self.runner.is_create_dxf = int(self.is_create_dxf.get())
+            self.runner.airjoint_type = self.airjoint_type.get()
             self.runner.idxlib = self.idxlib
             self.runner.track_mode = self.track_mode.get()
             self.runner.start_station = self.entry_start_sta_var.get()
@@ -723,6 +733,7 @@ class AutoPoleApp(tk.Tk):
                                 f"사용자정의 모드 {'ON' if runner.iscustommode else 'OFF'}", "WARN")
             self.entry_speed_var.set(runner.designspeed)
             self.is_custom_mode.set(bool(runner.iscustommode))
+            self.airjoint_type.set(getattr(runner, 'airjoint_type', 'single'))
             # 저장 당시 커스텀 데이터셋 경로 복원 (구버전 .dat 에는 없음)
             self.custom_dataset_json = getattr(runner, 'custom_dataset_json', None) or self.custom_dataset_json
             self.custom_spandata = getattr(runner, 'custom_spandata', None) or self.custom_spandata

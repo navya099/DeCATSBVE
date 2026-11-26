@@ -58,6 +58,8 @@ class BaseRunner:
         self.rail_info_file_path = None
         # 선형: BVEParser bve_alignment.txt 경로 (없으면 coord/curve/pitch 3개 파일 사용)
         self.alignment_file_path = None
+        # 자동 배치 에어조인트 방식: 'single' = 단주(전주 1개에 브래킷 2개), 'double_pole' = 복주(2·3·4호주 전주 2개)
+        self.airjoint_type = 'single'
         self.alignment = None
         self.sub_rail_key: int | None = None
         # 전선 상세 편집 내용 (경간 단위 지지점 수정·전선 추가/삭제): core/wire/wire_overrides.py 참고
