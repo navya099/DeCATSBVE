@@ -153,3 +153,26 @@ def test_outline_from_dxf(tmp_path):
     assert lines[0][0] == pytest.approx((-2.0, 0.0)) and lines[0][-1] == pytest.approx((2.0, 4.0))
     assert max(y for _, y in lines[1]) == pytest.approx(4.5, abs=0.01)           # 호 → 꺾은선
     assert len(_parse(po.polylines_csv(lines)).meshes) == 2
+
+
+def test_double_pole_preview_draws_both_poles(settings):
+    """복주: 앞 전주(측점 − 간격/2)와 뒤 전주(+ 간격/2)의 기둥·설비를 진행 방향으로 떼어 그림"""
+    runner = headless.build_runner(headless.load_config(
+        os.path.join(ROOT, 'tests', 'regression_cases', 'synthetic_single_250', 'case.json')) | {
+        'airjoint_type': 'double_pole'})
+    with contextlib.redirect_stdout(io.StringIO()):
+        runner.run()
+    pole = next(p for p in runner.poledata['main'] if p.twin is not None and p.structure != '터널')
+    single = next(p for p in runner.poledata['main'] if p.twin is None and p.section is None and p.structure == '토공')
+    pole.mast.name = pole.twin.mast.name = single.mast.name = 'POLE'
+    for b in pole.brackets:
+        b.bracket_name = 'BRACKET'
+    svc = ps.PreviewService()
+    svc.find = lambda name, index=None: os.path.join(ROOT, 'assets', 'preview', '선로중심선.csv')   # 형상은 아무거나
+    result = svc.build(pole, 0, mode='single')
+    poles = [o for o in result.objects if o.category == 'POLE']
+    ys = sorted({round(v.y, 3) for o in poles for m in o.mesh.meshes for v in m.vertices})
+    assert ys == [-0.5, 0.5]                                     # 기둥·기초·밴드가 앞뒤 두 곳
+    brackets = [o for o in result.objects if o.category == 'BRACKET']
+    assert {round(v.y, 3) for o in brackets for m in o.mesh.meshes for v in m.vertices} == {-0.5, 0.5}
+    assert len(poles) == 2 * len([o for o in svc.build(single, 0, mode='single').objects if o.category == 'POLE'])

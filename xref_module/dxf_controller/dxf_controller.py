@@ -11,13 +11,7 @@ class DXFController:
             vertices = mesh.vertices
 
             for face in mesh.faces:
-                edges = [
-                    (face.a, face.b),
-                    (face.b, face.c),
-                    (face.c, face.a),
-                ]
-
-                for i, j in edges:
+                for i, j in face.edges():
                     p1 = self._project(
                         vertices[i].x,
                         vertices[i].y,
@@ -35,11 +29,9 @@ class DXFController:
         for mesh in csvobj.meshes:
             vertices = mesh.vertices
             for face in mesh.faces:
-                v1, v2, v3 = [vertices[i] for i in (face.a, face.b, face.c)]
-                p1 = (v1.x, v1.y, v1.z)
-                p2 = (v2.x, v2.y, v2.z)
-                p3 = (v3.x, v3.y, v3.z)
-                self.msp.add_3dface([p1, p2, p3], dxfattribs={'layer': layer_name, 'color': color})
+                for tri in face.triangles():      # 꼭짓점 4개 이상 면은 삼각형으로 나눔
+                    pts = [(vertices[i].x, vertices[i].y, vertices[i].z) for i in tri]
+                    self.msp.add_3dface(pts, dxfattribs={'layer': layer_name, 'color': color})
 
     def export_dxf(self, layers, filename, option='', wires=None):
         self.doc = ezdxf.new()

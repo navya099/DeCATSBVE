@@ -12,6 +12,4 @@ class Mesh:
 
     def iter_edges(self):
         for f in self.faces:
-            yield f.a, f.b
-            yield f.b, f.c
-            yield f.c, f.a
+            yield from f.edges()
