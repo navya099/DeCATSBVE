@@ -326,6 +326,11 @@ class AutoPoleApp(tk.Tk):
         row_aj.pack(fill="x", pady=2)
         make_radio(row_aj, "단주", self.airjoint_type, "single").pack(side="left", padx=(0, 8))
         make_radio(row_aj, "복주", self.airjoint_type, "double_pole").pack(side="left")
+        # 복주 쌍 전주 간격: 자동 배치와 구간 편집기의 복주 에어조인트에 적용 (비우면 데이터셋 값)
+        self.double_pole_spacing = tk.StringVar(value="1.0")
+        make_entry(c_body2, "복주 쌍 전주 간격 (m, 비우면 데이터셋 값)", self.double_pole_spacing, width=8).pack(
+            fill="x", pady=(2, 0))
+        self.double_pole_spacing.trace_add('write', lambda *_: self._sync_double_pole_spacing())
 
         # ── 트랙 설정 ──
         c_outer3, c_body3 = card(sidebar, "🛤️ 트랙 설정")
@@ -537,6 +542,28 @@ class AutoPoleApp(tk.Tk):
         self.log_box.insert(tk.END, message + "\n", level)
         self.log_box.see(tk.END)
 
+    def _double_pole_spacing_value(self):
+        """입력한 복주 쌍 전주 간격(m). 비우면 None(데이터셋 값). 숫자가 아니거나 0 이하면 ValueError"""
+        text = self.double_pole_spacing.get().strip()
+        if not text:
+            return None
+        try:
+            value = float(text)
+        except ValueError:
+            raise ValueError(f'복주 쌍 전주 간격은 숫자로 입력하세요: {text}') from None
+        if value <= 0:
+            raise ValueError(f'복주 쌍 전주 간격은 0보다 커야 합니다: {text}')
+        return value
+
+    def _sync_double_pole_spacing(self):
+        """실행 뒤 간격을 바꾸면 이후 구간 편집기에서 추가·재생성하는 복주 에어조인트에 바로 적용"""
+        if self.runner is None:
+            return
+        try:
+            self.runner.double_pole_spacing = self._double_pole_spacing_value()
+        except ValueError:
+            return  # 입력 중인 값 (실행 시 오류로 알림)
+
     def update_inputs(self):
         try:
             if self.gen_mode.get() == 'auto':
@@ -553,6 +580,7 @@ class AutoPoleApp(tk.Tk):
             self.runner.custom_spandata = self.custom_spandata
             self.runner.is_create_dxf = int(self.is_create_dxf.get())
             self.runner.airjoint_type = self.airjoint_type.get()
+            self.runner.double_pole_spacing = self._double_pole_spacing_value()
             self.runner.idxlib = self.idxlib
             self.runner.track_mode = self.track_mode.get()
             self.runner.start_station = self.entry_start_sta_var.get()
@@ -734,6 +762,8 @@ class AutoPoleApp(tk.Tk):
             self.entry_speed_var.set(runner.designspeed)
             self.is_custom_mode.set(bool(runner.iscustommode))
             self.airjoint_type.set(getattr(runner, 'airjoint_type', 'single'))
+            spacing = getattr(runner, 'double_pole_spacing', None)
+            self.double_pole_spacing.set('' if spacing is None else f'{spacing:g}')
             # 저장 당시 커스텀 데이터셋 경로 복원 (구버전 .dat 에는 없음)
             self.custom_dataset_json = getattr(runner, 'custom_dataset_json', None) or self.custom_dataset_json
             self.custom_spandata = getattr(runner, 'custom_spandata', None) or self.custom_spandata

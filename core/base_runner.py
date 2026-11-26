@@ -60,10 +60,17 @@ class BaseRunner:
         self.alignment_file_path = None
         # 자동 배치 에어조인트 방식: 'single' = 단주(전주 1개에 브래킷 2개), 'double_pole' = 복주(2·3·4호주 전주 2개)
         self.airjoint_type = 'single'
+        # 복주 쌍 전주 간격(m). None 이면 데이터셋 airjoint.double_pole.spacing
+        self.double_pole_spacing = None
         self.alignment = None
         self.sub_rail_key: int | None = None
         # 전선 상세 편집 내용 (경간 단위 지지점 수정·전선 추가/삭제): core/wire/wire_overrides.py 참고
         self.wire_overrides = {}
+
+    def apply_dataset_options(self):
+        """실행 설정 중 데이터셋 값을 덮어쓰는 항목을 데이터셋 겟터에 반영 (복주 쌍 전주 간격)"""
+        if getattr(self, 'dataprocessor', None) is not None:
+            self.dataprocessor.double_pole_spacing_override = getattr(self, 'double_pole_spacing', None)
 
     def run(self):
         raise NotImplementedError("자식 클래스에서 구현하세요")

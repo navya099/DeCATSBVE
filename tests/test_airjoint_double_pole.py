@@ -203,3 +203,24 @@ def test_section_type_roles():
     assert SectionType.AJD_2.is_double_pole and not SectionType.AJ_2.is_double_pole
     assert SectionType.AS1_1.role is SectionType.AS1_1
     assert SectionType.parse('복주 에어조인트 중간주 (3호주)') is SectionType.AJD_MIDDLE
+
+
+def test_ui_spacing_overrides_dataset(tmp_path):
+    """실행 설정(UI)의 쌍 전주 간격이 데이터셋 값보다 우선: 자동 배치·구간 편집기 추가 모두"""
+    runner = run_case(airjoint_type='double_pole', double_pole_spacing=1.6)
+    assert {p.twin.spacing for p in paired(runner.poledata['main'])} == {1.6}
+    pole = next(p for p in paired(runner.poledata['main']) if p.structure != '터널')
+    text = outputs(runner, tmp_path, 'out')['main_pole.txt']
+    assert {pole.pos - 0.8, pole.pos + 0.8} <= set(freeobj_positions(text, pole.mast.index))
+    # 실행 뒤 간격을 바꾸고 구간 편집기로 추가 → 새 간격
+    runner.double_pole_spacing = 2.4
+    poles = runner.poledata['main']
+    start = next(poles[i] for i in range(20, len(poles) - 5)
+                 if all(poles[j].section is None and poles[j].flowstop is None for j in range(i, i + 5)))
+    plan = se.plan_add(runner, 'main', start.pos, 'airjoint_2span_double_pole')
+    se.apply_add(runner, plan, alignment_for)
+    assert {p.twin.spacing for p in plan.poles if p.twin} == {2.4}
+    # 비우면(None) 데이터셋 값
+    runner.double_pole_spacing = None
+    runner.apply_dataset_options()
+    assert runner.dataprocessor.get_double_pole_settings()['spacing'] == 1.0

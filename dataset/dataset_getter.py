@@ -2,6 +2,9 @@
 
 class DatasetGetter:
     """데이터셋 겟터"""
+    # 실행 설정(UI)에서 입력한 복주 쌍 전주 간격. None 이면 데이터셋 값 (runner.apply_dataset_options 가 설정)
+    double_pole_spacing_override = None
+
     def __init__(self, dataset):
         self.dataset = dataset
 
@@ -157,8 +160,10 @@ class DatasetGetter:
 
     def get_double_pole_settings(self):
         """복주 에어조인트 설정 {'spacing': 쌍 전주 선로방향 간격(m), 'feeder': 'both'(두 전주) | 'front'(앞 전주만)}.
-        데이터셋에 없으면 기본값 (구버전 커스텀 데이터셋 호환)"""
+        데이터셋에 없으면 기본값 (구버전 커스텀 데이터셋 호환). 간격은 실행 설정 입력값이 있으면 그 값"""
         value = {**self.DOUBLE_POLE_DEFAULTS, **(self.dataset.get('airjoint', {}).get('double_pole') or {})}
+        if self.double_pole_spacing_override is not None:
+            value['spacing'] = self.double_pole_spacing_override
         spacing = float(value['spacing'])
         if spacing <= 0:
             raise ValueError(f'airjoint.double_pole.spacing 은 0보다 커야 합니다: {spacing}')

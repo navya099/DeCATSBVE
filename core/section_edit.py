@@ -38,6 +38,8 @@ class SectionKind:
 
 
 def _airjoint_processor(runner, pole, alignment):
+    if hasattr(runner, 'apply_dataset_options'):
+        runner.apply_dataset_options()  # 실행 설정의 복주 쌍 전주 간격
     AirJointProcessor.process(pole, alignment, runner.dataprocessor, runner.idxlib)
 
 

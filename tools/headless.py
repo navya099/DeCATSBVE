@@ -52,6 +52,7 @@ DEFAULTS = {
     'coord': None, 'curve': None, 'pitch': None,
     'custom_json': None, 'custom_spandata': None,
     'airjoint_type': 'single',   # 'single' 단주 | 'double_pole' 복주
+    'double_pole_spacing': None,  # 복주 쌍 전주 간격(m), None = 데이터셋 값
 }
 PATH_KEYS = ('alignment', 'coord', 'curve', 'pitch', 'structure', 'rail_info', 'idxlib', 'custom_json',
              'custom_spandata')
@@ -117,6 +118,8 @@ def build_runner(cfg):
     if cfg['airjoint_type'] not in AIRJOINT_TYPES:
         raise ValueError(f"airjoint_type 은 {'/'.join(AIRJOINT_TYPES)} 중 하나: {cfg['airjoint_type']}")
     r.airjoint_type = cfg['airjoint_type']
+    if cfg['double_pole_spacing'] is not None:
+        r.double_pole_spacing = float(cfg['double_pole_spacing'])
 
     custom = bool(cfg['custom_json'])
     r.iscustommode = int(custom)
