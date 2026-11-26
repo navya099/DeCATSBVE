@@ -128,9 +128,14 @@ def test_generated_centerline_and_outline():
     m = o.meshes[0]
     assert len(m.vertices) == 8 and len(m.faces) == 3 * 4                      # 선분 3개 × 앞뒤 삼각형 4개
     assert {v.z for v in m.vertices} == {0.0, 0.05}
-    # 저장소의 선로중심선은 이 도구로 만든 것
+    # 저장소의 선로중심선·건축한계는 이 도구로 만든 것 (빈 메시 아님)
     with open(os.path.join(ROOT, 'assets', 'preview', '선로중심선.csv'), encoding='utf-8-sig') as f:
         assert len(_parse(f.read()).meshes) == 1
+    with open(os.path.join(ROOT, 'assets', 'preview', '건축한계.csv'), encoding='utf-8-sig') as f:
+        clearance = _parse(f.read())
+    vs = [v for m in clearance.meshes for v in m.vertices]
+    assert len(clearance.meshes) == 15
+    assert (min(v.x for v in vs), max(v.x for v in vs)) == (-2.1, 2.1) and max(v.y for v in vs) == pytest.approx(6.45)
 
 
 def test_outline_from_dxf(tmp_path):
