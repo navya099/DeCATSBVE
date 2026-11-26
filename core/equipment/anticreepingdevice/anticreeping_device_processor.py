@@ -166,12 +166,12 @@ class AnticreepingDeviceProcessor:
                         pole.pos, pole.next_pos, x1, x2)
                     if pole.structure != '터널':
                         pole.equipments.extend([
-                            EquipmentDATA(name='흐름방지장치_강관주용', index=679, offset=(pole.gauge, 0), rotation=adjusted_angle, type='흐름방지장치'),
-                            EquipmentDATA(name='봉강지선', index=674, offset=(pole.gauge, 0), rotation=0.0, type='봉강지선')
+                            EquipmentDATA(*self._equipment('흐름방지장치', '흐름방지장치_강관주용'), offset=(pole.gauge, 0), rotation=adjusted_angle, type='흐름방지장치'),
+                            EquipmentDATA(*self._equipment('봉강지선', '봉강지선'), offset=(pole.gauge, 0), rotation=0.0, type='봉강지선')
                         ])
                     else:
                         pole.equipments.append(
-                            EquipmentDATA(name='흐름방지장치_강관주용', index=679, offset=(pole.gauge, 0),
+                            EquipmentDATA(*self._equipment('흐름방지장치', '흐름방지장치_강관주용'), offset=(pole.gauge, 0),
                                           rotation=adjusted_angle, type='흐름방지장치'))
                 elif device['tag'] == FlowStop.END:
                     x1 = pole.gauge
@@ -180,13 +180,20 @@ class AnticreepingDeviceProcessor:
                         pole.pos, pole.next_pos, x1, x2)
                     if pole.structure != '터널':
                         pole.equipments.extend([
-                            EquipmentDATA(name='흐름방지장치_강관주용', index=679, offset=(pole.gauge, 0), rotation=180 - adjusted_angle, type='흐름방지장치'),
-                            EquipmentDATA(name='봉강지선', index=674, offset=(pole.gauge, 0), rotation=180, type='봉강지선')
+                            EquipmentDATA(*self._equipment('흐름방지장치', '흐름방지장치_강관주용'), offset=(pole.gauge, 0), rotation=180 - adjusted_angle, type='흐름방지장치'),
+                            EquipmentDATA(*self._equipment('봉강지선', '봉강지선'), offset=(pole.gauge, 0), rotation=180, type='봉강지선')
                         ])
                     else:
                         pole.equipments.append(
-                            EquipmentDATA(name='흐름방지장치_강관주용', index=679, offset=(pole.gauge, 0),
+                            EquipmentDATA(*self._equipment('흐름방지장치', '흐름방지장치_강관주용'), offset=(pole.gauge, 0),
                                           rotation=180 - adjusted_angle, type='흐름방지장치'))
+    def _equipment(self, name, default_name):
+        """(오브젝트 이름, 인덱스): 인덱스는 데이터셋 equipment, 이름은 인덱스 라이브러리 (없으면 기본 이름)"""
+        index = self.wire_processor.pro.get_equipment_index(name)
+        idxlib = getattr(self, 'idxlib', None)
+        found = idxlib.get_name(index) if idxlib is not None else None
+        return found or default_name, index
+
     def apply_wires(self):
         for track_name, devices in self.devices_by_track.items():
             for device in devices:

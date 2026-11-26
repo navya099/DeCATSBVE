@@ -131,9 +131,9 @@ class AirSectionWireProcessor:
             (f_start_x, start_cw_height + f_start_y), (aj_middle1_x, end_cw_height), pitch_angle, label='무효전차선')
         )
         #절연애자 설치
-        insulator = InsulatorData(pos=pole.pos + 2, index=678, type='장간애자N-a', offset=(f_start_x, start_cw_height + start_system_height),yaw=0,pitch=0,roll=0)
+        insulator = InsulatorData(pos=pole.pos + 2, index=self.datap.get_equipment_index('장간애자'), type='장간애자N-a', offset=(f_start_x, start_cw_height + start_system_height),yaw=0,pitch=0,roll=0)
         wire.add_insulator(insulator)
-        insulator = InsulatorData(pos=pole.pos + 2, index=678, type='장간애자N-a',
+        insulator = InsulatorData(pos=pole.pos + 2, index=self.datap.get_equipment_index('장간애자'), type='장간애자N-a',
                                   offset=(f_start_x, start_cw_height + f_start_y), yaw=0, pitch=0, roll=0)
         wire.add_insulator(insulator)
 
@@ -310,10 +310,10 @@ class AirSectionWireProcessor:
             (f_end_x, start_cw_height + f_start_y), (pole.next_gauge, h1), pitch_angle, label='무효전차선')
         )
         # 절연애자 설치
-        insulator = InsulatorData(pos=pole.pos - 2, index=678, type='장간애자N-a',
+        insulator = InsulatorData(pos=pole.pos - 2, index=self.datap.get_equipment_index('장간애자'), type='장간애자N-a',
                                   offset=(f_end_x, start_cw_height + start_system_height), yaw=0, pitch=0, roll=0)
         wire.add_insulator(insulator)
-        insulator = InsulatorData(pos=pole.pos - 2, index=678, type='장간애자N-a',
+        insulator = InsulatorData(pos=pole.pos - 2, index=self.datap.get_equipment_index('장간애자'), type='장간애자N-a',
                                   offset=(f_end_x, start_cw_height + f_start_y), yaw=0, pitch=0, roll=0)
         wire.add_insulator(insulator)
     def process_section_five(self, pole, next_pole, wire, cw_index, pitch_angle):
@@ -356,10 +356,10 @@ class AirSectionWireProcessor:
             (f_start_x, start_cw_height + f_start_y), (aj_middle1_x, end_cw_height), pitch_angle, label='무효전차선')
         )
         # 절연애자 설치
-        insulator = InsulatorData(pos=pole.pos + 2, index=678, type='장간애자N-a',
+        insulator = InsulatorData(pos=pole.pos + 2, index=self.datap.get_equipment_index('장간애자'), type='장간애자N-a',
                                   offset=(f_start_x, start_cw_height + start_system_height), yaw=0, pitch=0, roll=0)
         wire.add_insulator(insulator)
-        insulator = InsulatorData(pos=pole.pos + 2, index=678, type='장간애자N-a',
+        insulator = InsulatorData(pos=pole.pos + 2, index=self.datap.get_equipment_index('장간애자'), type='장간애자N-a',
                                   offset=(f_start_x, start_cw_height + f_start_y), yaw=0, pitch=0, roll=0)
         wire.add_insulator(insulator)
 
@@ -454,10 +454,10 @@ class AirSectionWireProcessor:
             (f_end_x, start_cw_height + f_start_y), (pole.next_gauge, h1), pitch_angle, label='무효전차선')
         )
         # 절연애자 설치
-        insulator = InsulatorData(pos=pole.pos - 2, index=678, type='장간애자N-a',
+        insulator = InsulatorData(pos=pole.pos - 2, index=self.datap.get_equipment_index('장간애자'), type='장간애자N-a',
                                   offset=(f_end_x, start_cw_height + start_system_height), yaw=0, pitch=0, roll=0)
         wire.add_insulator(insulator)
-        insulator = InsulatorData(pos=pole.pos - 2, index=678, type='장간애자N-a',
+        insulator = InsulatorData(pos=pole.pos - 2, index=self.datap.get_equipment_index('장간애자'), type='장간애자N-a',
                                   offset=(f_end_x, start_cw_height + f_start_y), yaw=0, pitch=0, roll=0)
         wire.add_insulator(insulator)
     def process_end(self, pole, next_pole, wire, cw_index, pitch_angle):

@@ -408,6 +408,7 @@ class AutoPoleApp(tk.Tk):
             ("라이브러리 갱신",  self.refresh_library,      "normal"),
             ("데이터셋 불러오기", self.on_load_dataset,      "normal"),
             ("데이터셋 편집",    self.edit_dataset,          "normal"),
+            ("BVE Object 폴더 지정", self.select_object_root, "normal"),
             ("로그 클리어",      self.clear_log,             "warning"),
         ]
         for txt, cmd, sty, *enabled in util_buttons:
@@ -686,6 +687,18 @@ class AutoPoleApp(tk.Tk):
         self.log_append("트랙 속성 갱신 완료", "SUCCESS")
         self._set_status("트랙 갱신 완료")
 
+    def select_object_root(self):
+        """전주 미리보기·도면 저장에 쓰는 BVE Object 폴더 지정 (PC별 설정, ~/.decatsbve/settings.json)"""
+        from file_io import user_settings
+        current = user_settings.get('bve_object_root')
+        path = askdirectory(title='BVE Object 폴더 선택 (Railway\\Object)',
+                            initialdir=current if os.path.isdir(current) else None)
+        if not path:
+            return
+        user_settings.set('bve_object_root', path)
+        self.log_append(f"BVE Object 폴더: {path}", "INFO")
+        self._set_status("Object 폴더 지정됨")
+
     def run_and_open_editor(self):
         try:
             if not self.update_inputs():
@@ -761,7 +774,7 @@ class AutoPoleApp(tk.Tk):
             messagebox.showerror('치명적 에러', f'저장 중 오류: {e}')
             self.log_append(f"❌ {e}", "ERROR")
 
-    PICKLE_DEFAULT_PATH = 'c:/temp/decatsbve.dat'
+    PICKLE_DEFAULT_NAME = 'decatsbve.dat'
     PICKLE_FILETYPES = [("DeCATSBVE data", "*.dat"), ("All files", "*.*")]
 
     def save_pickle(self):
@@ -770,7 +783,7 @@ class AutoPoleApp(tk.Tk):
             return
         path = asksaveasfilename(
             title='데이터 저장',
-            initialfile=os.path.basename(self.PICKLE_DEFAULT_PATH),
+            initialfile=self.PICKLE_DEFAULT_NAME,
             defaultextension=".dat",
             filetypes=self.PICKLE_FILETYPES,
         )

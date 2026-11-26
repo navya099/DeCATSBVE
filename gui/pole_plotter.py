@@ -4,7 +4,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib.backends._backend_tk import NavigationToolbar2Tk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from tkinter import messagebox
+from tkinter import filedialog, messagebox
 
 from matplotlib.collections import LineCollection
 
@@ -21,6 +21,7 @@ class PlotPoleMap(tk.Frame):
     def __init__(self, runner, events=None, master=None):
         super().__init__(master)
         self.selected_epole = None
+        self.selected_epoles = []      # 같은 측점의 본선+상선 (미리보기·도면 저장 대상)
         self.selected_pole_scatter = None
         self.sel_xy = None
         self.selected_pole = None
@@ -60,7 +61,15 @@ class PlotPoleMap(tk.Frame):
 
         self.service = PreviewService()
 
+    def _require_selection(self, title):
+        if not self.selected_epoles:
+            messagebox.showwarning(title, '편집기 테이블에서 전주를 먼저 선택하세요.')
+            return False
+        return True
+
     def show_preview(self):
+        if not self._require_selection('전주 미리보기'):
+            return
         self.viewer.objects.clear()
         missing_all = []
         # 오프셋 적용
@@ -77,11 +86,23 @@ class PlotPoleMap(tk.Frame):
         if missing_all:
             messagebox.showwarning(
                 '일부 파일 누락',
-                '다음 파일을 찾을 수 없습니다:\n\n' + '\n'.join(missing_all)
+                '다음 파일을 찾을 수 없습니다:\n\n' + '\n'.join(missing_all[:15])
+                + (f'\n… 외 {len(missing_all) - 15}건' if len(missing_all) > 15 else '')
+                + "\n\n(BVE Object 폴더는 '유틸리티 > BVE Object 폴더 지정'에서 바꿀 수 있습니다)"
             )
         self.viewer.draw()
 
     def save_dxf(self):
+        """선택 전주 도면(DXF) 저장 — 저장 위치를 묻는다 (이전: c:/temp 고정, 폴더가 없으면 실패)"""
+        if not self._require_selection('도면 저장'):
+            return
+        first = self.selected_epoles[0]
+        default_name = pole_units.unit_label(first.pole, getattr(first, 'which', None))
+        filename = filedialog.asksaveasfilename(
+            title='도면 저장 (DXF)', defaultextension='.dxf', initialfile=f'{default_name}.dxf',
+            filetypes=[('DXF', '*.dxf'), ('모든 파일', '*.*')])
+        if not filename:
+            return
         try:
             self.viewer.objects.clear()
             missing_all = []
@@ -99,7 +120,9 @@ class PlotPoleMap(tk.Frame):
             if missing_all:
                 messagebox.showwarning(
                     '일부 파일 누락',
-                    '다음 파일을 찾을 수 없습니다:\n\n' + '\n'.join(missing_all)
+                    '다음 파일을 찾을 수 없습니다:\n\n' + '\n'.join(missing_all[:15])
+                    + (f'\n… 외 {len(missing_all) - 15}건' if len(missing_all) > 15 else '')
+                    + "\n\n(BVE Object 폴더는 '유틸리티 > BVE Object 폴더 지정'에서 바꿀 수 있습니다)"
                 )
         except Exception as e:
             messagebox.showwarning(
@@ -109,8 +132,6 @@ class PlotPoleMap(tk.Frame):
             return
 
         try:
-            filename = f'c:/temp/{self.selected_epoles[0].pole.post_number}.dxf'
-
             dxfmgr = DXFController()
             dxfmgr.export_dxf(self.viewer.objects, filename, option='2d')
             messagebox.showinfo("도면 저장 완료", f"DXF 저장 완료: {filename}")

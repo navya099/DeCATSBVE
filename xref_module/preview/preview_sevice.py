@@ -1,3 +1,5 @@
+import os
+
 from xref_module.filefinder import FileLocator
 from xref_module.path_resolver import PathResolver
 from xref_module.preview.category import PreviewCategory
@@ -8,9 +10,41 @@ from xref_module.preview.preview_result import PreviewBuildResult
 from xref_module.vector3.vector3 import Vector3
 import math
 
+# 미리보기 배경 오브젝트: BVE Object 폴더(사용자 설정) 기준 상대 경로. 파일이 없으면 건너뛰고 누락 목록에 표시
+TRACK_OBJECT = '철도표준라이브러리/궤도/표준단면/자갈도상/일반철도/5M레일_신선_전차선X.csv'
+CLEARANCE_OBJECT = 'temp/건축한계.csv'
+CENTERLINE_OBJECT = 'temp/선로중심선.csv'
+# (구조물, 단선/복선) → 노반 오브젝트. 복선은 본선(트랙 0)에만 복선 단면을 그림
+STRUCTURE_OBJECTS = {
+    ('교량', 'single'): '철도표준라이브러리/노반/교량/psc거더교_단선.csv',
+    ('교량', 'double'): '전라선/노반/교량/psc빔 복선.csv',
+    ('터널', 'single'): '동해선/노반/터널/natm.csv',
+    ('터널', 'double'): '호남선/노반/구조물/터널/4.3m터널.csv',
+    ('토공', 'single'): '동해선/노반/토공/표준횡단면도.csv',
+    ('토공', 'double'): '중앙선/노반/토공/6공구복선노반l.csv',
+}
+
+
 class PreviewService:
     def __init__(self):
-        self.locator = FileLocator(PathResolver.BASE_PATH)
+        self._locator = None
+        self._locator_root = None
+
+    @property
+    def locator(self):
+        """전철전력 라이브러리 검색기 (Object 폴더 설정이 바뀌면 다시 만듦)"""
+        root = PathResolver.library_root()
+        if self._locator is None or self._locator_root != root:
+            self._locator, self._locator_root = FileLocator(root), root
+        return self._locator
+
+    @staticmethod
+    def _background(items, missing, relative, transform, category):
+        path = PathResolver.object_path(relative)
+        if os.path.exists(path):
+            items.append(PreviewItem(path=path, transform=transform, category=category))
+        else:
+            missing.append(path)
 
     def build(self, pole, trackidx, distnace=4.3, direction=1, mode='single'):
         items = []
@@ -130,32 +164,12 @@ class PreviewService:
                 print(f"[Bracket 처리 오류] {e}")
                 missing.append("bracket 처리 실패")
 
-        # 4. 레일 (임시 하드코딩)
-        items.append(
-            PreviewItem(
-                path=r"D:/BVE/루트/Railway/Object/철도표준라이브러리/궤도/표준단면/자갈도상/일반철도/5M레일_신선_전차선X.csv",
-                transform=Transform(x=0, z=0, rotation=0,pivot=pivot,roll=math.degrees(math.atan(pole.cant / 1.5))),
-                category=PreviewCategory.TRACK
-            )
-        )
-
-        # 4-1. 건축한계
-        items.append(
-            PreviewItem(
-                path=r"D:/BVE/루트/Railway/Object/temp/건축한계.csv",
-                transform=Transform(x=0, z=0, rotation=0, pivot=pivot, roll=math.degrees(math.atan(pole.cant / 1.5))),
-                category=PreviewCategory.TRACK
-            )
-        )
-
-        # 4-2. 궤도중심선
-        items.append(
-            PreviewItem(
-                path=r"D:/BVE/루트/Railway/Object/temp/선로중심선.csv",
-                transform=Transform(x=0, z=0, rotation=0, pivot=pivot, roll=math.degrees(math.atan(pole.cant / 1.5))),
-                category=PreviewCategory.CENTERLINE
-            )
-        )
+        # 4. 레일 · 4-1. 건축한계 · 4-2. 궤도중심선 (캔트만큼 기울임)
+        roll = math.degrees(math.atan(pole.cant / 1.5))
+        for relative, category in ((TRACK_OBJECT, PreviewCategory.TRACK), (CLEARANCE_OBJECT, PreviewCategory.TRACK),
+                                   (CENTERLINE_OBJECT, PreviewCategory.CENTERLINE)):
+            self._background(items, missing, relative, Transform(x=0, z=0, rotation=0, pivot=pivot, roll=roll),
+                             category)
 
         # 5. 장비들
         for equip in getattr(pole, "equipments", []):
@@ -177,44 +191,14 @@ class PreviewService:
                 print(f"[Equipment 처리 오류] {e}")
                 missing.append("equipment 처리 실패")
 
-        # 6. 구조물
-        try:
-            if pole.structure == "교량":
-                if mode == 'single':
-                    path = r"D:/BVE/루트/Railway/Object/철도표준라이브러리/노반/교량/psc거더교_단선.csv"
-                else:
-                    if trackidx == 0:
-                        path = r"E:\백업\C\Documents\배포용\가상 달빛내륙선 배포용\railway\object\전라선\노반\교량\psc빔 복선.csv"
-                    else:
-                        path = r'D:\BVE\루트\Railway\Object\abcdefg\dummy.csv'
-            elif pole.structure == "터널":
-                if mode == 'single':
-                    path = r"D:/BVE/루트/Railway/Object/동해선/노반/터널/natm.csv"
-                else:
-                    if trackidx == 0:
-                        path = r"D:/BVE/루트/Railway/Object/호남선\노반\구조물\터널\4.3m터널.csv"
-                    else:
-                        path = r'D:\BVE\루트\Railway\Object\abcdefg\dummy.csv'
-            else:
-                if mode == 'single':
-                    path = r"D:/BVE/루트/Railway/Object/동해선/노반/토공/표준횡단면도.csv"
-                else:
-                    if trackidx == 0:
-                        path = r"D:/BVE/루트/Railway/Object/중앙선/노반/토공/6공구복선노반l.csv"
-                    else:
-                        path = r'D:\BVE\루트\Railway\Object\abcdefg\dummy.csv'
-            items.append(
-                PreviewItem(
-                    path=path,
-                    transform=Transform(x=0, z=0, rotation=0,pivot=pivot),
-                    category=PreviewCategory.STRUCTURE
-                )
-            )
-        except Exception as e:
-            print(f"[Structure 처리 오류] {e}")
-            missing.append("structure 처리 실패")
+        # 6. 구조물 (복선은 본선에만 복선 단면)
+        structure = pole.structure if pole.structure in ('교량', '터널') else '토공'
+        layout = 'single' if mode == 'single' else 'double'
+        if layout == 'single' or trackidx == 0:
+            self._background(items, missing, STRUCTURE_OBJECTS[(structure, layout)],
+                             Transform(x=0, z=0, rotation=0, pivot=pivot), PreviewCategory.STRUCTURE)
 
         # 최종 조립
-        objects = PreviewAssembler.load_items(items)
+        objects = PreviewAssembler.load_items(items, failed=missing)
         return PreviewBuildResult(objects=objects, missing=missing)
 
