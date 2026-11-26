@@ -1,242 +1,54 @@
+"""에어조인트(2경간, 단주·복주) 전주별 브래킷·설비
+
+    1호주(AJ_START)  일반 개소 구성 + 장력장치·지선 (무효선 시작)
+    2호주(AJ_2)      F형(무효선 인상) + AJ형 I 브래킷
+    3호주(AJ_MIDDLE) AJ형 I + AJ형 O 브래킷 (평행 개소 가운데)
+    4호주(AJ_4)      AJ형 O + F형 브래킷
+    5호주(AJ_END)    일반 개소 구성 + 장력장치·지선 (무효선 끝)
+복주 에어조인트는 같은 위치 역할(section_role)의 규칙으로 만든 뒤 AirJointProcessor 가 전주 2개로 나눈다.
+"""
 from core.airjoint.aj_data_context import AirjointDataContext
-from core.bracket.bracket_data import BracketDATA
-from core.bracket.fitting_data import FittingDATA
-from core.equipment.equipment_data import EquipmentDATA
-from core.mast.mast_builder import MASTBuilder
-from core.pole.normal_section_processor import NormalSectionProcessor
+from core.bracket.section_bracket_builder import SectionBracketBuilder
 from core.pole.poledata import PoleDATA
-from core.pole.tunnel_section_processor import TunnelSectionProcessor
-from core.alignment.alignment import as_alignment
 from enums.section_type import SectionType, section_role
 
 
-class AirjointBracketAdder:
-    def __init__(self, params: AirjointDataContext ,dataprocessor, idxlib):
-        self.params = params
-        self.prosc = dataprocessor
-        self.idxlib = idxlib
+class AirjointBracketAdder(SectionBracketBuilder):
+    OFFSET_GETTER = 'get_airjoint_offset'
+
+    def __init__(self, params: AirjointDataContext, dataprocessor, idxlib):
+        super().__init__(params, dataprocessor, idxlib)
 
     def add_airjoint_brackets(self, pole: PoleDATA, polyline_with_sta):
         """에어조인트 각 구간별 브래킷 추가 (복주 에어조인트도 같은 위치 역할의 규칙 사용)"""
         role = section_role(pole.section)
         if role == SectionType.AJ_START:
-            # START 구간 처리
-            if pole.structure == '터널':
-                TunnelSectionProcessor.process(pole, self.prosc, self.idxlib)
-            else:
-                NormalSectionProcessor.process(pole, self.prosc, self.idxlib)
-            f_start_coord = self.prosc.get_airjoint_offset('F형_시점')
-            x1 = f_start_coord['x']
-            if pole.side == -1:
-                x1 *= -1
-            start_angle = as_alignment(polyline_with_sta).wire_angle(pole.pos, pole.next_pos, pole.gauge, x1)
-            en = self.idxlib.get_name(self.prosc.get_equipment_index('장력장치'))
-            pole.equipments.append(EquipmentDATA(name=en, index=self.prosc.get_equipment_index('장력장치'), offset=(pole.gauge,0),rotation=start_angle, type='장력장치'))
-            if pole.structure != '터널':
-                jiseon = self.idxlib.get_name(self.prosc.get_equipment_index('지선'))
-                pole.equipments.append(
-                    EquipmentDATA(name=jiseon, index=self.prosc.get_equipment_index('지선'), offset=(pole.gauge, 0), rotation=0, type='지선설비'))
+            self.base_components(pole)
+            self.add_anchor(pole, polyline_with_sta)
         elif role == SectionType.AJ_2:
-            # POINT_2 구간 처리
             self.add_common_equipts(pole)
             self.add_f_and_aj_brackets(pole)
-
         elif role == SectionType.AJ_MIDDLE:
-            # MIDDLE 구간 처리
             self.add_common_equipts(pole)
-            self.add_aj_brackets_middle(pole)
-
+            self.add_middle_brackets(pole, ('AJ형_중간1', 'I'), ('AJ형_중간2', 'O'))
         elif role == SectionType.AJ_4:
-            # POINT_4 구간 처리
             self.add_common_equipts(pole)
             self.add_f_and_aj_brackets(pole, end=True)
-
         elif role == SectionType.AJ_END:
-            # END 구간 처리
-            en = self.idxlib.get_name(self.prosc.get_equipment_index('장력장치'))
-            if pole.structure == '터널':
-                TunnelSectionProcessor.process(pole, self.prosc, self.idxlib)
-            else:
-                NormalSectionProcessor.process(pole, self.prosc, self.idxlib)
-            x5 = self.prosc.get_airjoint_offset('F형_끝').get('x')
-            if pole.side == 1:
-                x5 *= -1
-            end_angle = as_alignment(polyline_with_sta).wire_angle(pole.pos, pole.next_pos, x5, pole.next_gauge)
-            pole.equipments.append(EquipmentDATA(name=en, index=self.prosc.get_equipment_index('장력장치'), offset=(pole.gauge,0),rotation=180 + end_angle, type='장력장치'))
-            if pole.structure != '터널':
-                jiseon = self.idxlib.get_name(self.prosc.get_equipment_index('지선'))
-                pole.equipments.append(
-                    EquipmentDATA(name=jiseon, index=self.prosc.get_equipment_index('지선'), offset=(pole.gauge, 0), rotation=180, type='지선설비'))
+            self.base_components(pole)
+            self.add_anchor(pole, polyline_with_sta, end=True, flip_side=1)
 
     def add_f_and_aj_brackets(self, pole, end=False):
-        """F형 및 AJ형 브래킷을 추가하는 공통 함수"""
-        f_i, f_o = self.params.f_bracket_valuse['I'], self.params.f_bracket_valuse['O']
-        aj_i, aj_o = self.params.aj_bracket_values['I'], self.params.aj_bracket_values['O']
+        """2호주: F형(시점) → AJ형 I(시점), 4호주: AJ형 O(끝) → F형(끝)"""
+        f_bracket, aj_bracket = self.params.f_bracket_valuse, self.params.aj_bracket_values
         pole.brackets.clear()
-
         if not end:
-            # START 구간: F → AJ
-            f_start_coord = self.prosc.get_airjoint_offset('F형_시점')
-            x1, y1 = f_start_coord['x'], f_start_coord['y']
-            if pole.side == -1:
-                x1 *= -1
-            self.add_f_bracket(pole, f_i, x1, y1)
-
-            aj_start_coord = self.prosc.get_airjoint_offset('AJ형_시점')
-            x1,y1 = aj_start_coord['x'], aj_start_coord['y']
-            if pole.side == -1:
-                x1 *= -1
-            self.add_aj_bracket(pole,'I', aj_i, x1, y1)
-
+            self.add_f_bracket(pole, f_bracket['I'], *self.side_offset(pole, 'F형_시점', flip_side=-1))
+            self.add_paired_bracket(pole, 'I', aj_bracket['I'], *self.side_offset(pole, 'AJ형_시점', flip_side=-1))
         else:
-            # END 구간: AJ → F
-            aj_end_coord = self.prosc.get_airjoint_offset('AJ형_끝')
-            x1, y1 = aj_end_coord['x'], aj_end_coord['y']
-            if pole.side == 1:
-                x1 *= -1
-            self.add_aj_bracket(pole,'O', aj_o, x1, y1, end=True)
+            self.add_paired_bracket(pole, 'O', aj_bracket['O'], *self.side_offset(pole, 'AJ형_끝', flip_side=1),
+                                    end=True)
+            self.add_f_bracket(pole, f_bracket['O'], *self.side_offset(pole, 'F형_끝', flip_side=1))
 
-            f_end_coord = self.prosc.get_airjoint_offset('F형_끝')
-            x1, y1 = f_end_coord['x'], f_end_coord['y']
-            if pole.side == 1:
-                x1 *= -1
-            self.add_f_bracket(pole, f_o, x1, y1)
-
-    def add_f_bracket(self, pole: PoleDATA, bracket_code, x1, y1):
-        """F형 가동 브래킷 및 금구류 추가"""
-        rotation = 180 if pole.side == 1 else 0
-
-        #전차선 지지금구 F
-        idx1 = self.params.contact_wire_fitting
-        n1 = self.idxlib.get_name(idx1)
-        #조가선 지지금구 F
-        idx2 = self.params.messenger_wire_fittings['무효인상용']
-        n2 = self.idxlib.get_name(idx2)
-
-        #곡선당김금구 F
-        idx3 = (self.params.steady_arm_fitting.get('F') or {}).get('R')
-
-        n3 = self.idxlib.get_name(idx3)
-
-        # 현재 전차선 높이
-        sys_height, cw_height = self.prosc.get_contact_wire_and_massanger_wire_info(pole.structure)
-        mw_height = cw_height + sys_height
-
-        #브래킷 인상 높이
-        h = self.params.f_bracket_height
-        bracket_name = self.idxlib.get_name(bracket_code)
-        # 브래킷 추가
-        bracket = BracketDATA(
-            bracket_type='F',
-            index=bracket_code,
-            bracket_name=bracket_name,
-            offset=(0,h),
-            rotation=rotation
-        )
-        # 금구류 추가
-        self.add_bracket_fittng(bracket, idx1, n1, (x1, cw_height + y1), rotation)#전차선 지지금구 F
-        self.add_bracket_fittng(bracket, idx2, n2, (x1, mw_height + h), rotation)#조가선 지지금구 F
-        if idx3:
-            self.add_bracket_fittng(bracket, idx3, n3, (x1, y1 + cw_height), rotation)
-        # 터널구간 추가 H하수강 설치
-        if pole.structure == '터널':
-            self.add_bracket_fittng(bracket, self.params.mast_type, self.params.mast_name, (pole.gauge, 0),
-                                    rotation)
-        # PoleDATA에 브래킷 등록
-        pole.brackets.append(bracket)
-
-    def add_aj_bracket(self, pole: PoleDATA,bracket_type, bracket_code, x1, y1, end=False):
-        """AJ형 가동 브래킷 및 금구류 추가"""
-
-        rotation = 180 if pole.side == 1 else 0
-        #조가선 지지금구 에어조인트용
-        idx1 = self.params.messenger_wire_fittings['에어조인트용']
-        n1 = self.idxlib.get_name(idx1)
-        #곡선당김금구
-        if not end:
-            idx2 = self.params.steady_arm_fitting[bracket_type]['L']
-        else:
-            idx2 = self.params.steady_arm_fitting[bracket_type]['R']
-
-        #현재 전차선 높이
-        sys_height, cw_height = self.prosc.get_contact_wire_and_massanger_wire_info(pole.structure)
-        mw_height = cw_height + sys_height
-        n2 = self.idxlib.get_name(idx2)
-
-        bn = self.idxlib.get_name(bracket_code)
-        # 브래킷 인상 높이
-        # 브래킷 추가
-        bracket = BracketDATA(
-            bracket_type='AJ',
-            index=bracket_code,
-            bracket_name=bn,
-            offset=(0, y1),
-            rotation=rotation
-        )
-        # 금구류 추가
-        self.add_bracket_fittng(bracket, idx1, n1, (x1, mw_height + y1), rotation)#조가선 지지금구 에어조인트용
-        self.add_bracket_fittng(bracket, idx2, n2, (x1, cw_height), rotation)#곡선당김금구
-        #터널구간 추가 H하수강 설치
-        if pole.structure == '터널':
-            self.add_bracket_fittng(bracket, self.params.mast_type, self.params.mast_name, (pole.gauge, 0), rotation)
-        # PoleDATA에 브래킷 등록
-        pole.brackets.append(bracket)
-
-
-    def add_aj_brackets_middle(self, pole):
-        """MIDDLE 구간에서 AJ형 브래킷 추가"""
-        # 기본 브래킷 제거
-        pole.brackets.clear()
-
-        aj_i = self.params.aj_bracket_values.get('I')
-        aj_o = self.params.aj_bracket_values.get('O')
-
-        # AJ형 가동 브래킷 및 금구류 추가
-        x1, y1 = self.prosc.get_airjoint_offset('AJ형_중간1').get('x'), self.prosc.get_airjoint_offset('AJ형_중간1').get('y')
-        if pole.side == -1:
-            x1 *= -1
-        self.add_aj_bracket(pole, 'I',aj_i, x1, y1)
-
-        # AJ형 가동 브래킷 및 금구류 추가
-        x1, y1 = self.prosc.get_airjoint_offset('AJ형_중간2').get('x'), self.prosc.get_airjoint_offset('AJ형_중간2').get('y')
-        if pole.side == 1:
-            x1 *= -1
-        self.add_aj_bracket(pole, 'O', aj_o, x1, y1, end=True)
-
-    def add_common_equipts(self, pole):
-        """공통 설비"""
-        feederidx = self.params.feeder_idx
-        feeder_name = self.params.feeder_name
-        spreaderidx = self.params.spreader_idx
-        spreader_name = self.params.spreader_name
-
-        if pole.structure == '터널':
-            # 게이지 뒤집기
-            feeder_rotation = 180 if pole.side == -1 else 0
-
-
-            # Equipment 생성
-            pole.equipments.append(
-                EquipmentDATA(name=feeder_name, index=feederidx, offset=(pole.gauge * -1, 0),
-                              rotation=feeder_rotation, type='급전선설비')
-            )
-
-        else:
-            mast_rotation = 180 if pole.side == 1 else 0
-            feeder_rotation = mast_rotation
-
-            # Mast 생성
-            pole.mast = MASTBuilder.build(pole, dataprocessor=self.prosc, idxlib=self.idxlib, rotation=mast_rotation)
-
-            # Equipment 생성
-            pole.equipments.append(
-                EquipmentDATA(name=feeder_name, index=feederidx, offset=(pole.gauge, 0),
-                              rotation=feeder_rotation, type='급전선설비')
-            )
-            pole.equipments.append(
-                EquipmentDATA(name=spreader_name, index=spreaderidx, offset=(pole.gauge, 0),
-                              rotation=feeder_rotation, type='평행틀')
-            )
-
-    def add_bracket_fittng(self, bracket, idx, label, offset, rotation):
-        bracket.fittings.append(FittingDATA(index=idx, label=label, offset=offset, rotation=rotation))
+    # 이전 이름 호환
+    add_aj_bracket = SectionBracketBuilder.add_paired_bracket

@@ -1,474 +1,70 @@
-from core.insulator.insulator_data import InsulatorData
-from core.wire.common_processor import CommonWireProcessor
-from utils.comom_util import initialrize_tenstion_device
+"""에어섹션 구간 전선 (본선·무효선·장간애자)
+
+에어섹션 = 1구간(AS1_1 ~ AS1_5, 단일 에어섹션은 여기까지) + 이중 에어섹션의 2구간(AS2_1 ~ AS2_4).
+2구간은 1구간과 좌우가 반대라 오프셋 부호만 뒤집힌다 (_signed_offsets 의 second).
+
+전주별 처리:
+    AS1_1        본선 → AS 시점, 장력장치에서 오르는 무효선
+    AS1_2 AS2_1  본선 (AS 시점 → 중간2), 무효선 (F 시점 → 중간1), 장간애자
+    AS1_3 AS2_2  본선 → 무효선 상승 (중간2 → F 끝), 무효선 → 본선 (중간1 → AS 끝)
+    AS1_4_D      본선 (AS 끝 유지), 1구간 무효선 → 장력장치, 2구간 장력장치에서 오르는 무효선
+    AS1_4_S      본선 (AS 끝 → 다음 전주), 무효선 → 장력장치, 장간애자
+    AS2_3        AS1_4_S 와 같고 장력장치 길이·높이만 다름
+    AS1_5 AS2_4  본선 (일반 개소처럼 브래킷 편위)
+"""
+from core.wire.section_wire_base import SectionWireProcessor
 from enums.section_type import SectionType
 
+# 무효선이 장력장치로 내려가는 구간의 장력장치 길이·높이 (AS1_4_D 1구간, AS2_3)
+SHORT_TENSION = dict(tension_device_length=4, cw_height=5.638094, mw_height=6.237956)
 
-class AirSectionWireProcessor:
-    def __init__(self, compros: CommonWireProcessor, datap, al):
-        self.common = compros
-        self.datap = datap
-        self.al = al
 
-    def _offset(self, name):
-        """데이터셋 오프셋 (x, y)"""
-        value = self.datap.get_airsection_offset(name)
-        return value.get('x'), value.get('y')
+class AirSectionWireProcessor(SectionWireProcessor):
+    OFFSET_GETTER = 'get_airsection_offset'
+    PREFIX = 'AS형'
 
-    def run(self, pole, next_pole, wire, pitch_angle ,offset, cw_index):
-        # 에어섹션 구간 처리
-        # 무효전차선 정보 가져오기
-        imw_index = self.datap.get_inactive_mw_span(pole.span - 7)
-        icw_index = self.datap.get_inactive_cw_span(pole.span - 7)
+    def _section_offsets(self, pole, second=False):
+        """1구간: 시점 쪽 부호 = −side, 2구간(second): +side (좌우 반대)"""
+        return self._signed_offsets(pole, pole.side if second else -pole.side)
 
-        if pole.section == SectionType.AS1_1:
-            self.process_section_start(pole, next_pole, wire, cw_index,icw_index, imw_index, pitch_angle)
+    def run(self, pole, next_pole, wire, pitch_angle, offset, cw_index):
+        section = pole.section
+        if section == SectionType.AS1_1:
+            self.wires_start(pole, next_pole, wire, cw_index, pitch_angle, self._section_offsets(pole))
+        elif section in (SectionType.AS1_2, SectionType.AS2_1):
+            o = self._section_offsets(pole, second=section == SectionType.AS2_1)
+            self.wires_parallel_in(pole, next_pole, wire, cw_index, pitch_angle, o, insulators=True)
+        elif section in (SectionType.AS1_3, SectionType.AS2_2):
+            o = self._section_offsets(pole, second=section == SectionType.AS2_2)
+            self.wires_crossing(pole, next_pole, wire, cw_index, pitch_angle, o)
+        elif section == SectionType.AS1_4_D:
+            self.process_double_middle(pole, next_pole, wire, cw_index, pitch_angle)
+        elif section == SectionType.AS1_4_S:
+            self.process_parallel_out(pole, next_pole, wire, cw_index, pitch_angle, second=False, cut=7)
+        elif section == SectionType.AS2_3:
+            self.process_parallel_out(pole, next_pole, wire, cw_index, pitch_angle, second=True, cut=4,
+                                      **SHORT_TENSION)
+        elif section in (SectionType.AS1_5, SectionType.AS2_4):
+            self.wires_end(pole, next_pole, wire, cw_index, pitch_angle)
 
-        elif pole.section == SectionType.AS1_2:
-            self.process_section_two(pole, next_pole, wire, cw_index, pitch_angle)
+    def process_double_middle(self, pole, next_pole, wire, cw_index, pitch_angle):
+        """AS1_4_D (이중 에어섹션 가운데): 본선 AS 끝 유지, 1구간 무효선 → 장력장치,
+        2구간 무효선이 장력장치에서 오름 (2구간 F 시점은 1구간 기준 좌표에서 좌측일 때만 반전)"""
+        o = self._section_offsets(pole)
+        h = dict(heights=self._heights(pole, next_pole), f_y=o['f_y'])
+        scw, ecw, _, _ = h['heights']
+        self._wire(wire, cw_index, pole, (o['end'], scw), (o['end'], ecw), pitch_angle, '본선전차선')
+        self._falling_to_tension(wire, pole, pitch_angle, 4, o['f_end'], h, **SHORT_TENSION)
+        second_f_start = o['f_start'] * (-1 if pole.side == -1 else 1)
+        self._rising_from_tension(wire, pole, pitch_angle, self.datap.get_inactive_mw_span(pole.span - 6),
+                                  self.datap.get_inactive_cw_span(pole.span - 6), second_f_start, h)
 
-        elif pole.section == SectionType.AS1_3:
-            self.process_section_three(pole, next_pole, wire, cw_index, pitch_angle)
-
-        elif pole.section == SectionType.AS1_4_D:
-            self.process_section_forth(pole, next_pole, wire, cw_index, pitch_angle)
-        elif pole.section == SectionType.AS1_4_S:
-            self.process_section_forth_single(pole, next_pole, wire, cw_index, pitch_angle)
-
-        elif pole.section == SectionType.AS1_5:
-            self.process_end(pole, next_pole, wire, cw_index, pitch_angle)
-
-        elif pole.section == SectionType.AS2_1:
-            self.process_section_five(pole, next_pole, wire, cw_index, pitch_angle)
-
-        elif pole.section == SectionType.AS2_2:
-            self.process_section_six(pole, next_pole, wire, cw_index, pitch_angle)
-
-        elif pole.section == SectionType.AS2_3:
-            self.process_section_seven(pole, next_pole, wire, cw_index, pitch_angle)
-
-        elif pole.section == SectionType.AS2_4:
-            self.process_end(pole, next_pole, wire, cw_index, pitch_angle)
-
-    def process_section_start(self, pole, next_pole, wire, cw_index,icw_index, imw_index, pitch_angle):
-
-        aj_start_x, _ = self._offset('AS형_시점')
-        f_start_x, f_start_y = self._offset('F형_시점')
-        # 일반 구간
-        if pole.side == -1:
-            aj_start_x *= 1
-            f_start_x *= 1
-        else:
-            aj_start_x *= -1
-            f_start_x *= -1
-
-        # 본선
-        start_offset = pole.brackets[0].stagger
-        start_cw_height = self.datap.get_contact_wire_height(pole.structure)
-        end_cw_height = self.datap.get_contact_wire_height(next_pole.structure)
-        start_system_height = self.datap.get_system_height(pole.structure)
-        end_system_height = self.datap.get_system_height(next_pole.structure)
-        wire.add_wire(self.common.run(
-            self.al, cw_index, pole.pos, pole.next_pos, pole.z, pole.next_z,
-            (start_offset, start_cw_height), (aj_start_x, end_cw_height), pitch_angle, label='본선전차선')
-        )
-        # 무효선
-        # slope_degree1=전차선 각도, slope_degree2=조가선 각도, H1=전차선높이, H2=조가선 높이
-        slope_degree1, slope_degree2, h1, h2, pererall_d, sta2 = initialrize_tenstion_device(
-            pole.pos, pole.gauge, pole.span, start_cw_height, start_system_height, f_start_y)
-
-        mw = self.common.run(
-            self.al, imw_index, sta2, pole.next_pos, pole.z, pole.next_z,
-            (pererall_d, h2), (f_start_x, end_cw_height + end_system_height), pitch_angle, label='무효조가선')
-
-        mw.station = sta2
-        wire.add_wire(mw)
-
-        cw = self.common.run(
-            self.al, icw_index, sta2, pole.next_pos, pole.z, pole.next_z,
-            (pererall_d, h1), (f_start_x, end_cw_height + f_start_y), pitch_angle, label='무효전차선')
-        cw.station = sta2
-        wire.add_wire(cw)
-
-    def process_section_two(self, pole, next_pole, wire, cw_index, pitch_angle):
-
-        aj_middle1_x, _ = self._offset('AS형_중간1')
-        aj_middle2_x, _ = self._offset('AS형_중간2')
-        aj_start_x, _ = self._offset('AS형_시점')
-        f_start_x, f_start_y = self._offset('F형_시점')
-
-        # 일반 구간
-        if pole.side == -1:
-            aj_start_x *= 1
-            f_start_x *= 1
-            aj_middle1_x *= 1
-            aj_middle2_x *= -1
-        else:
-            aj_start_x *= -1
-            f_start_x *= -1
-            aj_middle1_x *= -1
-            aj_middle2_x *= 1
-
-        # 본선
-        start_cw_height = self.datap.get_contact_wire_height(pole.structure)
-        end_cw_height = self.datap.get_contact_wire_height(next_pole.structure)
-        start_system_height = self.datap.get_system_height(pole.structure)
-        end_system_height = self.datap.get_system_height(next_pole.structure)
-        wire.add_wire(self.common.run(
-            self.al, cw_index, pole.pos, pole.next_pos, pole.z, pole.next_z,
-            (aj_start_x, start_cw_height), (aj_middle2_x, end_cw_height), pitch_angle, label='본선전차선')
-        )
-        # 무효선
-        imw_index = self.datap.get_inactive_mw_span(pole.span)
-        icw_index = self.datap.get_inactive_mw_span(pole.span)
-        wire.add_wire(self.common.run(
-            self.al, imw_index, pole.pos, pole.next_pos, pole.z, pole.next_z,
-            (f_start_x, start_cw_height + start_system_height), (aj_middle1_x, end_cw_height + end_system_height),
-            pitch_angle, label='무효조가선')
-        )
-        wire.add_wire(self.common.run(
-            self.al, icw_index, pole.pos, pole.next_pos, pole.z, pole.next_z,
-            (f_start_x, start_cw_height + f_start_y), (aj_middle1_x, end_cw_height), pitch_angle, label='무효전차선')
-        )
-        #절연애자 설치
-        insulator = InsulatorData(pos=pole.pos + 2, index=self.datap.get_equipment_index('장간애자'), type='장간애자N-a', offset=(f_start_x, start_cw_height + start_system_height),yaw=0,pitch=0,roll=0)
-        wire.add_insulator(insulator)
-        insulator = InsulatorData(pos=pole.pos + 2, index=self.datap.get_equipment_index('장간애자'), type='장간애자N-a',
-                                  offset=(f_start_x, start_cw_height + f_start_y), yaw=0, pitch=0, roll=0)
-        wire.add_insulator(insulator)
-
-    def process_section_three(self, pole, next_pole, wire, cw_index, pitch_angle):
-        f_end_x, _ = self._offset('F형_끝')
-        aj_middle1_x, _ = self._offset('AS형_중간1')
-        aj_middle2_x, _ = self._offset('AS형_중간2')
-        aj_start_x, _ = self._offset('AS형_시점')
-        f_start_x, f_start_y = self._offset('F형_시점')
-        aj_end_x, _ = self._offset('AS형_끝')
-
-        # 일반 구간
-        if pole.side == -1:
-            aj_start_x *= 1
-            f_start_x *= 1
-            aj_middle1_x *= 1
-            aj_middle2_x *= -1
-            aj_end_x *= -1
-            f_end_x *= -1
-
-        else:
-            aj_start_x *= -1
-            f_start_x *= -1
-            aj_middle1_x *= -1
-            aj_middle2_x *= 1
-            aj_end_x *= 1
-            f_end_x *= 1
-
-        # 본선 >무효선 상승
-        start_cw_height = self.datap.get_contact_wire_height(pole.structure)
-        end_cw_height = self.datap.get_contact_wire_height(next_pole.structure)
-        start_system_height = self.datap.get_system_height(pole.structure)
-        end_system_height = self.datap.get_system_height(next_pole.structure)
-        # 본선 -> 무효전차선
-        imw_index = self.datap.get_inactive_mw_span(pole.span)
-        icw_index = self.datap.get_inactive_mw_span(pole.span)
-        wire.add_wire(self.common.run(
-            self.al, icw_index, pole.pos, pole.next_pos, pole.z, pole.next_z,
-            (aj_middle2_x, start_cw_height), (f_end_x, end_cw_height + f_start_y), pitch_angle, label='무효전차선')
-        )
-        wire.add_wire(self.common.run(
-            self.al, imw_index, pole.pos, pole.next_pos, pole.z, pole.next_z,
-            (aj_middle2_x, start_cw_height + start_system_height), (f_end_x, end_cw_height + end_system_height),
-            pitch_angle, label='무효조가선')
-        )
-
-        # 무효선 > 본선
-        wire.add_wire(self.common.run(
-            self.al, cw_index, pole.pos, pole.next_pos, pole.z, pole.next_z,
-            (aj_middle1_x, start_cw_height), (aj_end_x, end_cw_height), pitch_angle, label='무효->본선전차선')
-        )
-    def process_section_forth(self, pole, next_pole, wire, cw_index, pitch_angle):
-        f_end_x, _ = self._offset('F형_끝')
-        aj_middle1_x, _ = self._offset('AS형_중간1')
-        aj_middle2_x, _ = self._offset('AS형_중간2')
-        aj_start_x, _ = self._offset('AS형_시점')
-        f_start_x, f_start_y = self._offset('F형_시점')
-        aj_end_x, _ = self._offset('AS형_끝')
-        # 일반 구간
-        if pole.side == -1:
-            aj_start_x *= 1
-            f_start_x *= 1
-            aj_middle1_x *= 1
-            aj_middle2_x *= -1
-            aj_end_x *= -1
-            f_end_x *= -1
-
-        else:
-            aj_start_x *= -1
-            f_start_x *= -1
-            aj_middle1_x *= -1
-            aj_middle2_x *= 1
-            aj_end_x *= 1
-            f_end_x *= 1
-        # 본선
-        start_cw_height = self.datap.get_contact_wire_height(pole.structure)
-        end_cw_height = self.datap.get_contact_wire_height(next_pole.structure)
-        start_system_height = self.datap.get_system_height(pole.structure)
-        end_system_height = self.datap.get_system_height(next_pole.structure)
-        wire.add_wire(self.common.run(
-            self.al, cw_index, pole.pos, pole.next_pos, pole.z, pole.next_z,
-            (aj_end_x, start_cw_height), (aj_end_x, end_cw_height), pitch_angle, label='본선전차선')
-        )
-        ###섹션 1구간 무효인상선
-        # 무효선
-        tension_device_length = 4
-        imw_index = self.datap.get_inactive_mw_span(pole.span - tension_device_length)
-        icw_index = self.datap.get_inactive_cw_span(pole.span - tension_device_length)
-
-        # slope_degree1=전차선 각도, slope_degree2=조가선 각도, H1=전차선높이, H2=조가선 높이
-        slope_degree1, slope_degree2, h1, h2, pererall_d, sta2 = initialrize_tenstion_device(
-            pole.pos, pole.gauge, pole.span, start_cw_height, start_system_height, f_start_y, tension_device_length=tension_device_length, cw_height=5.638094, mw_height=6.237956)
-
-        wire.add_wire(self.common.run(
-            self.al, imw_index, pole.pos, pole.next_pos, pole.z, pole.next_z,
-            (f_end_x, start_cw_height + start_system_height), (pole.next_gauge, h2), pitch_angle, label='무효조가선')
-        )
-        wire.add_wire(self.common.run(
-            self.al, icw_index, pole.pos, pole.next_pos, pole.z, pole.next_z,
-            (f_end_x, start_cw_height + f_start_y), (pole.next_gauge, h1), pitch_angle, label='무효전차선')
-        )
-        ###섹션 2구간 무효선
-        imw_index = self.datap.get_inactive_mw_span(pole.span - 6)
-        icw_index = self.datap.get_inactive_cw_span(pole.span - 6)
-
-        #2구간 다시 처리필요
-        if pole.side == -1:
-            f_start_x *= -1
-        # 무효선
-        # slope_degree1=전차선 각도, slope_degree2=조가선 각도, H1=전차선높이, H2=조가선 높이
-        slope_degree1, slope_degree2, h1, h2, pererall_d, sta2 = initialrize_tenstion_device(
-            pole.pos, pole.gauge, pole.span, start_cw_height, start_system_height, f_start_y)
-
-        mw = self.common.run(
-            self.al, imw_index, sta2, pole.next_pos, pole.z, pole.next_z,
-            (pererall_d, h2), (f_start_x, end_cw_height + end_system_height), pitch_angle, label='무효조가선')
-
-        mw.station = sta2
-        wire.add_wire(mw)
-
-        cw = self.common.run(
-            self.al, icw_index, sta2, pole.next_pos, pole.z, pole.next_z,
-            (pererall_d, h1), (f_start_x, end_cw_height + f_start_y), pitch_angle, label='무효전차선')
-        cw.station = sta2
-        wire.add_wire(cw)
-
-    def process_section_forth_single(self, pole, next_pole, wire, cw_index, pitch_angle):
-        f_end_x, _ = self._offset('F형_끝')
-        aj_middle1_x, _ = self._offset('AS형_중간1')
-        aj_middle2_x, _ = self._offset('AS형_중간2')
-        aj_start_x, _ = self._offset('AS형_시점')
-        f_start_x, f_start_y = self._offset('F형_시점')
-        aj_end_x, _ = self._offset('AS형_끝')
-        # 일반 구간
-        if pole.side == -1:
-            aj_start_x *= 1
-            f_start_x *= 1
-            aj_middle1_x *= 1
-            aj_middle2_x *= -1
-            aj_end_x *= -1
-            f_end_x *= -1
-
-        else:
-            aj_start_x *= -1
-            f_start_x *= -1
-            aj_middle1_x *= -1
-            aj_middle2_x *= 1
-            aj_end_x *= 1
-            f_end_x *= 1
-        # 본선
-        end_offset = next_pole.brackets[0].stagger
-        start_cw_height = self.datap.get_contact_wire_height(pole.structure)
-        end_cw_height = self.datap.get_contact_wire_height(next_pole.structure)
-        start_system_height = self.datap.get_system_height(pole.structure)
-        wire.add_wire(self.common.run(
-            self.al, cw_index, pole.pos, pole.next_pos, pole.z, pole.next_z,
-            (aj_end_x, start_cw_height), (end_offset, end_cw_height), pitch_angle, label='본선전차선')
-        )
-        # 무효선
-        tension_device_length = 7
-        imw_index = self.datap.get_inactive_mw_span(pole.span - tension_device_length)
-        icw_index = self.datap.get_inactive_cw_span(pole.span - tension_device_length)
-
-        # slope_degree1=전차선 각도, slope_degree2=조가선 각도, H1=전차선높이, H2=조가선 높이
-        slope_degree1, slope_degree2, h1, h2, pererall_d, sta2 = initialrize_tenstion_device(
-            pole.pos, pole.gauge, pole.span, start_cw_height, start_system_height, f_start_y)
-
-        wire.add_wire(self.common.run(
-            self.al, imw_index, pole.pos, pole.next_pos, pole.z, pole.next_z,
-            (f_end_x, start_cw_height + start_system_height), (pole.next_gauge, h2), pitch_angle, label='무효조가선')
-        )
-        wire.add_wire(self.common.run(
-            self.al, icw_index, pole.pos, pole.next_pos, pole.z, pole.next_z,
-            (f_end_x, start_cw_height + f_start_y), (pole.next_gauge, h1), pitch_angle, label='무효전차선')
-        )
-        # 절연애자 설치
-        insulator = InsulatorData(pos=pole.pos - 2, index=self.datap.get_equipment_index('장간애자'), type='장간애자N-a',
-                                  offset=(f_end_x, start_cw_height + start_system_height), yaw=0, pitch=0, roll=0)
-        wire.add_insulator(insulator)
-        insulator = InsulatorData(pos=pole.pos - 2, index=self.datap.get_equipment_index('장간애자'), type='장간애자N-a',
-                                  offset=(f_end_x, start_cw_height + f_start_y), yaw=0, pitch=0, roll=0)
-        wire.add_insulator(insulator)
-    def process_section_five(self, pole, next_pole, wire, cw_index, pitch_angle):
-        aj_middle1_x, _ = self._offset('AS형_중간1')
-        aj_middle2_x, _ = self._offset('AS형_중간2')
-        aj_start_x, _ = self._offset('AS형_시점')
-        f_start_x, f_start_y = self._offset('F형_시점')
-
-        # 일반 구간
-        if pole.side == -1:
-            aj_start_x *= -1
-            f_start_x *= -1
-            aj_middle1_x *= -1
-            aj_middle2_x *= 1
-        else:
-            aj_start_x *= 1
-            f_start_x *= 1
-            aj_middle1_x *= 1
-            aj_middle2_x *= -1
-
-        # 본선
-        start_cw_height = self.datap.get_contact_wire_height(pole.structure)
-        end_cw_height = self.datap.get_contact_wire_height(next_pole.structure)
-        start_system_height = self.datap.get_system_height(pole.structure)
-        end_system_height = self.datap.get_system_height(next_pole.structure)
-        wire.add_wire(self.common.run(
-            self.al, cw_index, pole.pos, pole.next_pos, pole.z, pole.next_z,
-            (aj_start_x, start_cw_height), (aj_middle2_x, end_cw_height), pitch_angle, label='본선전차선')
-        )
-        # 무효선
-        imw_index = self.datap.get_inactive_mw_span(pole.span)
-        icw_index = self.datap.get_inactive_mw_span(pole.span)
-        wire.add_wire(self.common.run(
-            self.al, imw_index, pole.pos, pole.next_pos, pole.z, pole.next_z,
-            (f_start_x, start_cw_height + start_system_height), (aj_middle1_x, end_cw_height + end_system_height),
-            pitch_angle, label='무효조가선')
-        )
-        wire.add_wire(self.common.run(
-            self.al, icw_index, pole.pos, pole.next_pos, pole.z, pole.next_z,
-            (f_start_x, start_cw_height + f_start_y), (aj_middle1_x, end_cw_height), pitch_angle, label='무효전차선')
-        )
-        # 절연애자 설치
-        insulator = InsulatorData(pos=pole.pos + 2, index=self.datap.get_equipment_index('장간애자'), type='장간애자N-a',
-                                  offset=(f_start_x, start_cw_height + start_system_height), yaw=0, pitch=0, roll=0)
-        wire.add_insulator(insulator)
-        insulator = InsulatorData(pos=pole.pos + 2, index=self.datap.get_equipment_index('장간애자'), type='장간애자N-a',
-                                  offset=(f_start_x, start_cw_height + f_start_y), yaw=0, pitch=0, roll=0)
-        wire.add_insulator(insulator)
-
-    def process_section_six(self, pole, next_pole, wire, cw_index, pitch_angle):
-        f_end_x, _ = self._offset('F형_끝')
-        aj_middle1_x, _ = self._offset('AS형_중간1')
-        aj_middle2_x, _ = self._offset('AS형_중간2')
-        _, f_start_y = self._offset('F형_시점')
-        aj_end_x, _ = self._offset('AS형_끝')
-
-        # 일반 구간
-        if pole.side == -1:
-            aj_middle1_x *= -1
-            aj_middle2_x *= 1
-            aj_end_x *= 1
-            f_end_x *= 1
-        else:
-
-            aj_middle1_x *= 1
-            aj_middle2_x *= -1
-            aj_end_x *= -1
-            f_end_x *= -1
-
-        # 본선 >무효선 상승
-        start_cw_height = self.datap.get_contact_wire_height(pole.structure)
-        end_cw_height = self.datap.get_contact_wire_height(next_pole.structure)
-        start_system_height = self.datap.get_system_height(pole.structure)
-        end_system_height = self.datap.get_system_height(next_pole.structure)
-        # 본선 -> 무효전차선
-        imw_index = self.datap.get_inactive_mw_span(pole.span)
-        icw_index = self.datap.get_inactive_mw_span(pole.span)
-        wire.add_wire(self.common.run(
-            self.al, icw_index, pole.pos, pole.next_pos, pole.z, pole.next_z,
-            (aj_middle2_x, start_cw_height), (f_end_x, end_cw_height + f_start_y), pitch_angle, label='무효전차선')
-        )
-        wire.add_wire(self.common.run(
-            self.al, imw_index, pole.pos, pole.next_pos, pole.z, pole.next_z,
-            (aj_middle2_x, start_cw_height + start_system_height), (f_end_x, end_cw_height + end_system_height),
-            pitch_angle, label='무효조가선')
-        )
-
-        # 무효선 > 본선
-        wire.add_wire(self.common.run(
-            self.al, cw_index, pole.pos, pole.next_pos, pole.z, pole.next_z,
-            (aj_middle1_x, start_cw_height), (aj_end_x, end_cw_height), pitch_angle, label='무효->본선전차선')
-        )
-    def process_section_seven(self, pole, next_pole, wire, cw_index, pitch_angle):
-        # 평행구간 전차선 오프셋
-        f_end_x, _ = self._offset('F형_끝')
-        aj_middle1_x, _ = self._offset('AS형_중간1')
-        aj_middle2_x, _ = self._offset('AS형_중간2')
-        aj_start_x, _ = self._offset('AS형_시점')
-        f_start_x, f_start_y = self._offset('F형_시점')
-        aj_end_x, _ = self._offset('AS형_끝')
-
-        # 방향(side) + 터널 여부에 따라 X 좌표 반전
-
-        # 일반 구간
-        if pole.side == -1:
-            aj_start_x *= -1
-            f_start_x *= -1
-            aj_middle1_x *= -1
-        else:
-            aj_middle2_x *= -1
-            aj_end_x *= -1
-            f_end_x *= -1
-
-        # 본선
-        end_offset = next_pole.brackets[0].stagger
-        start_cw_height = self.datap.get_contact_wire_height(pole.structure)
-        end_cw_height = self.datap.get_contact_wire_height(next_pole.structure)
-        start_system_height = self.datap.get_system_height(pole.structure)
-        wire.add_wire(self.common.run(
-            self.al, cw_index, pole.pos, pole.next_pos, pole.z, pole.next_z,
-            (aj_end_x, start_cw_height), (end_offset, end_cw_height), pitch_angle, label='본선전차선')
-        )
-        # 무효선
-        tension_device_length = 4
-        imw_index = self.datap.get_inactive_mw_span(pole.span - tension_device_length)
-        icw_index = self.datap.get_inactive_cw_span(pole.span - tension_device_length)
-
-        # slope_degree1=전차선 각도, slope_degree2=조가선 각도, H1=전차선높이, H2=조가선 높이
-        slope_degree1, slope_degree2, h1, h2, pererall_d, sta2 = initialrize_tenstion_device(
-            pole.pos, pole.gauge, pole.span, start_cw_height, start_system_height, f_start_y, tension_device_length=tension_device_length,cw_height=5.638094, mw_height=6.237956)
-
-        wire.add_wire(self.common.run(
-            self.al, imw_index, pole.pos, pole.next_pos, pole.z, pole.next_z,
-            (f_end_x, start_cw_height + start_system_height), (pole.next_gauge, h2), pitch_angle, label='무효조가선')
-        )
-        wire.add_wire(self.common.run(
-            self.al, icw_index, pole.pos, pole.next_pos, pole.z, pole.next_z,
-            (f_end_x, start_cw_height + f_start_y), (pole.next_gauge, h1), pitch_angle, label='무효전차선')
-        )
-        # 절연애자 설치
-        insulator = InsulatorData(pos=pole.pos - 2, index=self.datap.get_equipment_index('장간애자'), type='장간애자N-a',
-                                  offset=(f_end_x, start_cw_height + start_system_height), yaw=0, pitch=0, roll=0)
-        wire.add_insulator(insulator)
-        insulator = InsulatorData(pos=pole.pos - 2, index=self.datap.get_equipment_index('장간애자'), type='장간애자N-a',
-                                  offset=(f_end_x, start_cw_height + f_start_y), yaw=0, pitch=0, roll=0)
-        wire.add_insulator(insulator)
-    def process_end(self, pole, next_pole, wire, cw_index, pitch_angle):
-        # 본선
-        start_offset = pole.brackets[0].stagger
-        end_offset = next_pole.brackets[0].stagger
-        start_cw_height = self.datap.get_contact_wire_height(pole.structure)
-        end_cw_height = self.datap.get_contact_wire_height(next_pole.structure)
-
-        wire.add_wire(self.common.run(
-            self.al, cw_index, pole.pos, pole.next_pos, pole.z, pole.next_z,
-            (start_offset, start_cw_height), (end_offset, end_cw_height), pitch_angle, label='본선전차선')
-        )
-
+    def process_parallel_out(self, pole, next_pole, wire, cw_index, pitch_angle, second, cut, **tension):
+        """AS1_4_S / AS2_3: 본선 AS 끝 → 다음 전주 편위, 무효선 F 끝 → 장력장치, 장간애자"""
+        o = self._section_offsets(pole, second)
+        h = dict(heights=self._heights(pole, next_pole), f_y=o['f_y'])
+        scw, ecw, ssys, _ = h['heights']
+        self._wire(wire, cw_index, pole, (o['end'], scw), (next_pole.brackets[0].stagger, ecw), pitch_angle,
+                   '본선전차선')
+        self._falling_to_tension(wire, pole, pitch_angle, cut, o['f_end'], h, **tension)
+        self._insulators(wire, pole, -2, o['f_end'], scw + ssys, scw + o['f_y'])
