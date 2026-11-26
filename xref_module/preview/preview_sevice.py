@@ -67,154 +67,84 @@ class PreviewService:
         else:
             missing.append(PathResolver.object_path(relative))
 
+    def _component(self, items, missing, obj, name, category, pivot, dy=0.0):
+        """구성품 하나: 오브젝트 파일을 찾아 (x, 진행 방향 dy, 높이) 에 배치. 없으면 누락 목록"""
+        if obj is None or not name:
+            return
+        path = self.find(name, getattr(obj, 'index', None))
+        if path is None:
+            self._missing(missing, name)
+            return
+        x, z = obj.offset[0], obj.offset[1]
+        items.append(PreviewItem(path=path, category=category,
+                                 transform=Transform(x=x, y=dy, z=z, rotation=obj.rotation, pivot=pivot)))
+
+    def _mast(self, items, missing, mast, pivot, dy):
+        """기둥 + 기초 + 부속(밴드)"""
+        if mast is None:
+            return
+        self._component(items, missing, mast, mast.name, PreviewCategory.POLE, pivot, dy)
+        if mast.base is not None:
+            self._component(items, missing, mast.base, mast.base.name, PreviewCategory.POLE, pivot, dy)
+        for acc in mast.accessories or []:
+            if acc:
+                self._component(items, missing, acc, acc.name, PreviewCategory.POLE, pivot, dy)
+
     def build(self, pole, trackidx, distnace=4.3, direction=1, mode='single', idxlib=None):
+        """전주 하나의 미리보기 오브젝트 (기둥·기초·밴드, 브래킷·피팅, 레일·건축한계·중심선, 설비, 노반).
+        복주 에어조인트는 앞 전주(측점 − 간격/2)와 뒤 전주(측점 + 간격/2)를 진행 방향으로 떼어 놓는다."""
         if idxlib is not None:
             self.idxlib = idxlib
         items = []
         missing = []
-        distnace *= direction
-        if trackidx == 0:
-            pivot = Vector3(0,0,0)
-        else:
-            pivot = Vector3(distnace, 0, 0)
-
         if not pole:
             return PreviewBuildResult(objects=[], missing=["pole이 None입니다"])
+        pivot = Vector3(0, 0, 0) if trackidx == 0 else Vector3(distnace * direction, 0, 0)
+        twin = getattr(pole, 'twin', None)
+        front_dy, rear_dy = pole.station_offsets if twin is not None else (0.0, None)
 
-        # 2. 기둥
+        # 1. 기둥·기초·부속 (복주면 뒤 전주 것도)
         try:
-            mast = pole.mast
-            if mast:
-                if mast.name:
-                    path = self.find(mast.name, mast.index)
-                    if path:
-                        items.append(
-                            PreviewItem(
-                                path=path,
-                                transform=Transform(x=mast.offset[0],z=mast.offset[1], rotation=mast.rotation,pivot=pivot),
-                                category=PreviewCategory.POLE
-                            )
-                        )
-                    else:
-                        self._missing(missing, mast.name)
-        except Exception as e:
+            self._mast(items, missing, pole.mast, pivot, front_dy)
+            if twin is not None:
+                self._mast(items, missing, twin.mast, pivot, rear_dy)
+        except Exception as e:  # noqa: BLE001 - 구성품 하나 때문에 미리보기 전체가 멈추지 않도록
             print(f"[Mast 처리 오류] {e}")
-            missing.append("mast 처리 실패")
+            missing.append("기둥 처리 실패")
 
-        # 2-1. 전주기초
-        try:
-            mast = pole.mast
-            if mast:
-                if mast.base:
-                    base = mast.base
-                    if base.name:
-                        path = self.find(mast.base.name, mast.base.index)
-                        if path:
-                            items.append(
-                                PreviewItem(
-                                    path=path,
-                                    transform=Transform(x=base.offset[0], z=base.offset[1], rotation=base.rotation, pivot=pivot),
-                                    category=PreviewCategory.POLE
-                                )
-                            )
-                        else:
-                            self._missing(missing, base.name)
-        except Exception as e:
-            print(f"[기초 처리 오류] {e}")
-            missing.append("기초 처리 실패")
-
-        # 2-2. 전주악세서리
-        try:
-            mast = pole.mast
-            if mast:
-                if mast.accessories:
-                    for ac in mast.accessories:
-                        if ac:
-                            if ac.name:
-                                path = self.find(ac.name, ac.index)
-                                if path:
-                                    items.append(
-                                        PreviewItem(
-                                            path=path,
-                                            transform=Transform(x=ac.offset[0], z=ac.offset[1], rotation=ac.rotation,
-                                                                pivot=pivot),
-                                            category=PreviewCategory.POLE
-                                        )
-                                    )
-                                else:
-                                    self._missing(missing, ac.name)
-        except Exception as e:
-            print(f"[전주 악세서리 처리 오류] {e}")
-            missing.append("악세서리 처리 실패")
-
-        # 3. 브래킷
-        for br in getattr(pole, "brackets", []):
+        # 2. 브래킷과 피팅 (복주면 달린 전주 위치)
+        for br in pole.brackets or []:
+            if not br:
+                continue
+            dy = rear_dy if twin is not None and getattr(br, 'on_twin', False) else front_dy
             try:
-                if br:
-                    if br.bracket_name:
-                        path = self.find(br.bracket_name, br.index)
-                        if path:
-                            items.append(
-                                PreviewItem(
-                                    path=path,
-                                    transform=Transform(x=br.offset[0], z=br.offset[1], rotation=br.rotation,pivot=pivot),
-                                    category=PreviewCategory.BRACKET
-                                )
-                            )
-                        else:
-                            self._missing(missing, br.bracket_name)
-
-                    # 브래킷 피팅류
-                    for f in getattr(br, "fittings", []):
-                        try:
-                            if f:
-                                if f.label:
-                                    path = self.find(f.label, f.index)
-                                    if path:
-                                        items.append(
-                                            PreviewItem(
-                                                path=path,
-                                                transform=Transform(x=f.offset[0], z=f.offset[1],rotation=f.rotation,pivot=pivot),
-                                                category=PreviewCategory.BRACKET
-                                            )
-                                        )
-                                    else:
-                                        self._missing(missing, f.label)
-                        except Exception as e:
-                            print(f"[Fitting 처리 오류] {e}")
-                            missing.append("fitting 처리 실패")
-            except Exception as e:
+                self._component(items, missing, br, br.bracket_name, PreviewCategory.BRACKET, pivot, dy)
+                for fit in br.fittings or []:
+                    if fit:
+                        self._component(items, missing, fit, fit.label, PreviewCategory.BRACKET, pivot, dy)
+            except Exception as e:  # noqa: BLE001
                 print(f"[Bracket 처리 오류] {e}")
-                missing.append("bracket 처리 실패")
+                missing.append("브래킷 처리 실패")
 
-        # 4. 레일 · 4-1. 건축한계 · 4-2. 궤도중심선 (캔트만큼 기울임)
+        # 3. 레일 · 건축한계 · 궤도중심선 (캔트만큼 기울임)
         roll = math.degrees(math.atan(pole.cant / 1.5))
         for relative, category in ((TRACK_OBJECT, PreviewCategory.TRACK), (CLEARANCE_OBJECT, PreviewCategory.TRACK),
                                    (CENTERLINE_OBJECT, PreviewCategory.CENTERLINE)):
             self._background(items, missing, relative, Transform(x=0, z=0, rotation=0, pivot=pivot, roll=roll),
                              category)
 
-        # 5. 장비들
-        for equip in getattr(pole, "equipments", []):
-            try:
-                if equip:
-                    if equip.name:
-                        path = self.find(equip.name, equip.index)
-                        if path:
-                            items.append(
-                                PreviewItem(
-                                    path=path,
-                                    transform=Transform(x=equip.offset[0], z=equip.offset[1], rotation=equip.rotation,pivot=pivot),
-                                    category=PreviewCategory.FEEDER
-                                )
-                            )
-                        else:
-                            self._missing(missing, equip.name)
-            except Exception as e:
-                print(f"[Equipment 처리 오류] {e}")
-                missing.append("equipment 처리 실패")
+        # 4. 설비 (복주면 뒤 전주 설비도)
+        equipment_groups = [(pole.equipments, front_dy)] + ([(twin.equipments, rear_dy)] if twin is not None else [])
+        for equipments, dy in equipment_groups:
+            for equip in equipments or []:
+                try:
+                    if equip:
+                        self._component(items, missing, equip, equip.name, PreviewCategory.FEEDER, pivot, dy)
+                except Exception as e:  # noqa: BLE001
+                    print(f"[Equipment 처리 오류] {e}")
+                    missing.append("설비 처리 실패")
 
-        # 6. 구조물 (복선은 본선에만 복선 단면)
+        # 5. 구조물 (복선은 본선에만 복선 단면)
         structure = pole.structure if pole.structure in ('교량', '터널') else '토공'
         layout = 'single' if mode == 'single' else 'double'
         if layout == 'single' or trackidx == 0:

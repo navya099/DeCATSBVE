@@ -99,6 +99,26 @@ class PlotPoleMap(tk.Frame):
                 + "\n\n(BVE Object 폴더는 '유틸리티 > BVE Object 폴더 지정'에서 바꿀 수 있습니다)"
             )
         self.viewer.draw()
+        self._pump_preview()
+
+    PREVIEW_EVENT_MS = 30
+
+    def _pump_preview(self):
+        """미리보기(Qt) 창이 열려 있는 동안 Tk 타이머로 Qt 이벤트 처리 (Qt 이벤트 루프가 따로 돌지 않음)"""
+        if getattr(self, '_preview_pumping', False):
+            return
+        self._preview_pumping = True
+
+        def tick():
+            try:
+                self.viewer.process_events()
+                if self.viewer.is_open() and self.winfo_exists():
+                    self.after(self.PREVIEW_EVENT_MS, tick)
+                    return
+            except Exception as e:  # noqa: BLE001 - 창이 닫히는 중 등
+                print(f'[미리보기 이벤트 처리 중단] {e}')
+            self._preview_pumping = False
+        self.after(self.PREVIEW_EVENT_MS, tick)
 
     def save_dxf(self):
         """선택 전주 도면(DXF) 저장 — 저장 위치를 묻는다 (이전: c:/temp 고정, 폴더가 없으면 실패)"""

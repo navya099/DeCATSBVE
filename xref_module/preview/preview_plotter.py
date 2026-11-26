@@ -39,13 +39,7 @@ class PreviewPlotter:
             xs, ys = [], []
 
             for face in mesh.faces:
-                edges = [
-                    (face.a, face.b),
-                    (face.b, face.c),
-                    (face.c, face.a),
-                ]
-
-                for i, j in edges:
+                for i, j in face.edges():
                     p1 = self._project(
                         vertices[i].x,
                         vertices[i].y,

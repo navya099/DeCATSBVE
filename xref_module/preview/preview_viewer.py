@@ -16,13 +16,11 @@ class PreviewViewer:
         self.projection = projection
 
     def initialize(self):
-        # 이미 창이 살아있으면 다시 띄우기
-        if self.win is not None:
-            self.win.show()
+        """창 띄우기: 열려 있으면 앞으로, 닫혔으면(창을 닫으면 Qt 가 내부 그래픽 객체를 지움) 새로 만든다"""
+        if self.is_open():
             self.win.raise_()
             self.win.activateWindow()
             return
-
         self._ensure_app()
         self._build_window()
         self.win.show()
@@ -43,6 +41,21 @@ class PreviewViewer:
 
         # 마우스 이동 이벤트 연결
         self.proxy = pg.SignalProxy(self.plot.scene().sigMouseMoved, rateLimit=60, slot=self._mouse_moved)
+
+    def is_open(self):
+        """미리보기 창이 떠 있는지 (닫혀 내부 객체가 지워진 창은 False)"""
+        if self.win is None:
+            return False
+        try:
+            return self.win.isVisible()
+        except RuntimeError:  # 이미 삭제된 Qt 객체
+            return False
+
+    def process_events(self):
+        """Qt 이벤트 처리 — Tk 앱 안에서는 Qt 이벤트 루프가 돌지 않으므로 Tk 타이머에서 주기적으로 부른다
+        (창 다시 그리기, 확대·이동 등 마우스 조작)"""
+        if self.app is not None:
+            self.app.processEvents()
 
     def add_object(self, obj):
         self.objects.append(obj)
