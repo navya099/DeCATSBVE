@@ -1,3 +1,10 @@
-
-;Jeminie SketchUp to CSV
+﻿;DeCATSBVE tools.preview_objects 로 생성
 CreateMeshBuilder,
+AddVertex, -0.005, -0.5, 0,
+AddVertex, 0.005, -0.5, 0,
+AddVertex, 0.005, 7, 0,
+AddVertex, -0.005, 7, 0,
+AddFace, 0, 1, 2
+AddFace, 0, 2, 3
+AddFace, 0, 2, 1
+AddFace, 0, 3, 2
