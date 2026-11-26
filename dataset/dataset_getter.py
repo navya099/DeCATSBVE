@@ -156,6 +156,17 @@ class DatasetGetter:
         """에어조인트구간 f브래킷 인상높이 반환"""
         return self.dataset['airjoint']['bracket_height']
 
+    # 설비 오브젝트 인덱스 (데이터셋 equipment). 없으면 이전 코드에 고정돼 있던 값 (구버전 커스텀 데이터셋 호환)
+    EQUIPMENT_DEFAULTS = {'장력장치': 1247, '지선': 674, '인류장치': 682, '장간애자': 678,
+                          '흐름방지장치': 679, '봉강지선': 674}
+
+    def get_equipment_index(self, name):
+        """설비 오브젝트 인덱스: 장력장치·지선·인류장치·장간애자·흐름방지장치·봉강지선"""
+        table = {**self.EQUIPMENT_DEFAULTS, **(self.dataset.get('equipment') or {})}
+        if name not in table:
+            raise ValueError(f"데이터셋 equipment 에 '{name}' 인덱스가 없습니다.")
+        return table[name]
+
     DOUBLE_POLE_DEFAULTS = {'spacing': 1.0, 'feeder': 'both'}
     DOUBLE_POLE_FEEDER = ('both', 'front')
 

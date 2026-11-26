@@ -31,12 +31,12 @@ class AirSectionBracketAdder:
             if pole.side == -1:
                 x1 *= -1
             start_angle = as_alignment(polyline_with_sta).wire_angle(pole.pos, pole.next_pos, pole.gauge, x1)
-            en = self.idxlib.get_name(1247)
-            pole.equipments.append(EquipmentDATA(name=en, index=1247, offset=(pole.gauge,0),rotation=start_angle, type='장력장치'))
+            en = self.idxlib.get_name(self.prosc.get_equipment_index('장력장치'))
+            pole.equipments.append(EquipmentDATA(name=en, index=self.prosc.get_equipment_index('장력장치'), offset=(pole.gauge,0),rotation=start_angle, type='장력장치'))
             if pole.structure != '터널':
-                jiseon = self.idxlib.get_name(674)
+                jiseon = self.idxlib.get_name(self.prosc.get_equipment_index('지선'))
                 pole.equipments.append(
-                    EquipmentDATA(name=jiseon, index=674, offset=(pole.gauge, 0), rotation=0, type='지선설비'))
+                    EquipmentDATA(name=jiseon, index=self.prosc.get_equipment_index('지선'), offset=(pole.gauge, 0), rotation=0, type='지선설비'))
 
         elif pole.section == SectionType.AS1_2:
             # POINT_2 구간 처리
@@ -95,17 +95,17 @@ class AirSectionBracketAdder:
             if pole.side == -1:
                 x1 *= -1
             start_angle = as_alignment(polyline_with_sta).wire_angle(pole.pos, pole.next_pos, pole.gauge, x1)
-            en = self.idxlib.get_name(1247)
+            en = self.idxlib.get_name(self.prosc.get_equipment_index('장력장치'))
             pole.equipments.append(
-                EquipmentDATA(name=en, index=1247, offset=(pole.gauge, 0), rotation=start_angle, type='장력장치'))
+                EquipmentDATA(name=en, index=self.prosc.get_equipment_index('장력장치'), offset=(pole.gauge, 0), rotation=start_angle, type='장력장치'))
             if pole.structure != '터널':
-                jiseon = self.idxlib.get_name(674)
+                jiseon = self.idxlib.get_name(self.prosc.get_equipment_index('지선'))
                 pole.equipments.append(
-                    EquipmentDATA(name=jiseon, index=674, offset=(pole.gauge, 0), rotation=0, type='지선설비'))
+                    EquipmentDATA(name=jiseon, index=self.prosc.get_equipment_index('지선'), offset=(pole.gauge, 0), rotation=0, type='지선설비'))
 
         elif pole.section == SectionType.AS1_5:
             # END 구간 처리
-            en = self.idxlib.get_name(1247)
+            en = self.idxlib.get_name(self.prosc.get_equipment_index('장력장치'))
             if pole.structure == '터널':
                 TunnelSectionProcessor.process(pole, self.prosc, self.idxlib)
             else:
@@ -114,11 +114,11 @@ class AirSectionBracketAdder:
             if pole.side == 1:
                 x5 *= -1
             end_angle = as_alignment(polyline_with_sta).wire_angle(pole.pos, pole.next_pos, x5, pole.next_gauge)
-            pole.equipments.append(EquipmentDATA(name=en, index=1247, offset=(pole.gauge,0),rotation=180 + end_angle, type='장력장치'))
+            pole.equipments.append(EquipmentDATA(name=en, index=self.prosc.get_equipment_index('장력장치'), offset=(pole.gauge,0),rotation=180 + end_angle, type='장력장치'))
             if pole.structure != '터널':
-                jiseon = self.idxlib.get_name(674)
+                jiseon = self.idxlib.get_name(self.prosc.get_equipment_index('지선'))
                 pole.equipments.append(
-                    EquipmentDATA(name=jiseon, index=674, offset=(pole.gauge, 0), rotation=180, type='지선설비'))
+                    EquipmentDATA(name=jiseon, index=self.prosc.get_equipment_index('지선'), offset=(pole.gauge, 0), rotation=180, type='지선설비'))
 
         elif pole.section == SectionType.AS2_1:
             # POINT_2 구간 처리
@@ -136,17 +136,17 @@ class AirSectionBracketAdder:
                 as_x *= 1
             self.add_f_and_as_brackets(pole, f_x, f_y, as_x, as_y, end=False)
 
-            en = self.idxlib.get_name(682)
+            en = self.idxlib.get_name(self.prosc.get_equipment_index('인류장치'))
             x5 = self.prosc.get_airsection_offset('F형_끝').get('x')
             if pole.side == -1:
                 x5 *= -1
             end_angle = as_alignment(polyline_with_sta).wire_angle(pole.pos, pole.next_pos, x5, pole.next_gauge)
             pole.equipments.append(
-                EquipmentDATA(name=en, index=682, offset=(pole.gauge, 0), rotation=180 + end_angle, type='인류장치'))
+                EquipmentDATA(name=en, index=self.prosc.get_equipment_index('인류장치'), offset=(pole.gauge, 0), rotation=180 + end_angle, type='인류장치'))
             if pole.structure != '터널':
-                jiseon = self.idxlib.get_name(674)
+                jiseon = self.idxlib.get_name(self.prosc.get_equipment_index('지선'))
                 pole.equipments.append(
-                    EquipmentDATA(name=jiseon, index=674, offset=(pole.gauge, 0), rotation=180, type='지선설비'))
+                    EquipmentDATA(name=jiseon, index=self.prosc.get_equipment_index('지선'), offset=(pole.gauge, 0), rotation=180, type='지선설비'))
         elif pole.section == SectionType.AS2_2:
             # MIDDLE 구간 처리
             self.add_common_equipts(pole)
@@ -169,7 +169,7 @@ class AirSectionBracketAdder:
 
         elif pole.section == SectionType.AS2_4:
             # END 구간 처리
-            en = self.idxlib.get_name(682)
+            en = self.idxlib.get_name(self.prosc.get_equipment_index('인류장치'))
             if pole.structure == '터널':
                 TunnelSectionProcessor.process(pole, self.prosc, self.idxlib)
             else:
@@ -179,11 +179,11 @@ class AirSectionBracketAdder:
                 x5 *= -1
             end_angle = as_alignment(polyline_with_sta).wire_angle(pole.pos, pole.next_pos, x5, pole.next_gauge)
             pole.equipments.append(
-                EquipmentDATA(name=en, index=682, offset=(pole.gauge, 0), rotation=180 + end_angle, type='인류장치'))
+                EquipmentDATA(name=en, index=self.prosc.get_equipment_index('인류장치'), offset=(pole.gauge, 0), rotation=180 + end_angle, type='인류장치'))
             if pole.structure != '터널':
-                jiseon = self.idxlib.get_name(674)
+                jiseon = self.idxlib.get_name(self.prosc.get_equipment_index('지선'))
                 pole.equipments.append(
-                    EquipmentDATA(name=jiseon, index=674, offset=(pole.gauge, 0), rotation=180, type='지선설비'))
+                    EquipmentDATA(name=jiseon, index=self.prosc.get_equipment_index('지선'), offset=(pole.gauge, 0), rotation=180, type='지선설비'))
 
     def add_f_and_as_brackets(self, pole, f_x, f_y, as_x, as_y, end=False):
         """F형 및 AJ형 브래킷을 추가하는 공통 함수"""

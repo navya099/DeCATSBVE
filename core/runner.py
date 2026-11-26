@@ -33,6 +33,7 @@ class AutoRunner(BaseRunner):
 
         #추가설비(흐름방지장치)
         self.anticreeping_pr = AnticreepingDeviceProcessor(self.poledata, self.wire_data, self.airjoint_list, self.wire_processor)
+        self.anticreeping_pr.idxlib = self.idxlib   # 흐름방지장치·봉강지선 오브젝트 이름
         self.anticreeping_pr.process()
 
         # 최종 출력

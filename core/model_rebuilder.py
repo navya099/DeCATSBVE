@@ -111,4 +111,5 @@ def rebuild(runner):
                                                    runner.airjoint_list, runner.wire_processor)
         runner.anticreeping_pr = anticreeping
     anticreeping.set_data(runner.poledata, runner.wire_data, runner.wire_processor)
+    anticreeping.idxlib = getattr(runner, 'idxlib', None)
     anticreeping.process()

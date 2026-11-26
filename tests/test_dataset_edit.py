@@ -133,3 +133,34 @@ def test_standard_paths_untouched():
     d = DatasetDocument.from_standard(250)
     d.set(('mast', 'gauge', '토공'), '9')
     assert open(json_path, encoding='utf-8').read() == before
+
+
+def test_equipment_indices_from_dataset():
+    """장력장치·지선·인류장치·장간애자·흐름방지장치·봉강지선 인덱스를 데이터셋에서 (이전: 코드에 고정)"""
+    import contextlib
+    import io
+    from tools import headless
+    from core import section_edit as se
+    from core.model_rebuilder import alignment_for, rebuild
+    cfg = headless.load_config(os.path.join(ROOT, 'tests', 'regression_cases', 'synthetic_single_250', 'case.json'))
+    runner = headless.build_runner(cfg)
+    custom = {'장력장치': 9101, '지선': 9102, '인류장치': 9103, '장간애자': 9104, '흐름방지장치': 9105, '봉강지선': 9106}
+    runner.dataprocessor.dataset['equipment'] = custom
+    with contextlib.redirect_stdout(io.StringIO()):
+        runner.run()
+        poles = runner.poledata['main']
+        start = next(poles[i] for i in range(20, len(poles) - 8)
+                     if all(poles[j].section is None and poles[j].flowstop is None for j in range(i, i + 8)))
+        se.apply_add(runner, se.plan_add(runner, 'main', start.pos, 'airsection_double'), alignment_for)
+        rebuild(runner)
+        fs = next(poles[i] for i in range(3, len(poles) - 3)
+                  if all(poles[j].section is None and poles[j].flowstop is None for j in range(i, i + 3)))
+        se.apply_add(runner, se.plan_add(runner, 'main', fs.pos, 'flowstop'), alignment_for)
+        rebuild(runner)
+    used = {e.index for p in poles for e in p.equipments}
+    insulators = {i.index for w in runner.wire_data['main'] for i in (w.insulators or [])}
+    assert {9101, 9102, 9103, 9105, 9106} <= used and 9104 in insulators
+    assert not ({1247, 682, 679, 678} & (used | insulators))
+    # 구버전 커스텀 데이터셋(equipment 없음) → 이전 값
+    del runner.dataprocessor.dataset['equipment']
+    assert runner.dataprocessor.get_equipment_index('장력장치') == 1247
