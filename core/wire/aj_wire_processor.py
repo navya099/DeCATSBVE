@@ -1,150 +1,34 @@
-from core.wire.common_processor import CommonWireProcessor
-from utils.comom_util import initialrize_tenstion_device
+"""에어조인트(2경간, 단주·복주) 전선 — 에어섹션 1구간과 같은 모양이고 오프셋 표(airjoint)와 좌우만 다름
+
+    1호주(AJ_START)  본선 → AJ 시점, 장력장치에서 오르는 무효선
+    2호주(AJ_2)      본선 (AJ 시점 → 중간2), 무효선 (F 시점 → 중간1)
+    3호주(AJ_MIDDLE) 본선 → 무효선 상승, 무효선 → 본선
+    4호주(AJ_4)      본선 (AJ 끝 → 다음 전주 편위), 무효선 → 장력장치
+    5호주(AJ_END)    본선 (일반 개소처럼 브래킷 편위)
+복주 에어조인트도 같은 위치 역할(section_role)이라 전선은 단주와 같다.
+"""
+from core.wire.section_wire_base import SectionWireProcessor
 from enums.section_type import SectionType, section_role
-class AirjointWireProcessor:
-    def __init__(self, compros: CommonWireProcessor, datap, al):
-        self.common = compros
-        self.datap = datap
-        self.al = al
 
-    def _offset(self, name):
-        """데이터셋 오프셋 (x, y)"""
-        value = self.datap.get_airjoint_offset(name)
-        return value.get('x'), value.get('y')
 
-    def run(self, pole, next_pole, wire, pitch_angle ,offset, cw_index):
-        # 에어조인트 구간 처리
-        # 전차선 정보 가져오기,
-        system_heigh, contact_height = self.datap.get_contact_wire_and_massanger_wire_info(pole.structure)
-        imw_index = self.datap.get_inactive_mw_span(pole.span - 7)
-        icw_index = self.datap.get_inactive_cw_span(pole.span - 7)
-        # 평행구간 전차선 오프셋
-        aj_start_x, _ = self._offset('AJ형_시점')
-        f_start_x, f_start_y = self._offset('F형_시점')
-        aj_middle1_x, _ = self._offset('AJ형_중간1')
-        aj_middle2_x, _ = self._offset('AJ형_중간2')
-        aj_end_x, _ = self._offset('AJ형_끝')
-        f_end_x, _ = self._offset('F형_끝')
+class AirjointWireProcessor(SectionWireProcessor):
+    OFFSET_GETTER = 'get_airjoint_offset'
+    PREFIX = 'AJ형'
 
-        # 방향(side) + 터널 여부에 따라 X 좌표 반전
-
-        # 일반 구간
-        if pole.side == -1:
-            aj_start_x *= -1
-            f_start_x *= -1
-            aj_middle1_x *= -1
-        else:
-            aj_middle2_x *= -1
-            aj_end_x *= -1
-            f_end_x *= -1
-
-        role = section_role(pole.section)  # 복주 에어조인트도 전선은 단주와 같음
+    def run(self, pole, next_pole, wire, pitch_angle, offset, cw_index):
+        role = section_role(pole.section)
+        o = self._signed_offsets(pole, pole.side)   # 시점 쪽 부호 = side
         if role == SectionType.AJ_START:
-            # 본선
-            start_offset = pole.brackets[0].stagger
-            start_cw_height = self.datap.get_contact_wire_height(pole.structure)
-            end_cw_height = self.datap.get_contact_wire_height(next_pole.structure)
-            start_system_height = self.datap.get_system_height(pole.structure)
-            end_system_height = self.datap.get_system_height(next_pole.structure)
-            wire.add_wire(self.common.run(
-                self.al, cw_index, pole.pos, pole.next_pos, pole.z, pole.next_z,
-                (start_offset,start_cw_height),(aj_start_x,end_cw_height), pitch_angle, label='본선전차선')
-            )
-            # 무효선
-            #slope_degree1=전차선 각도, slope_degree2=조가선 각도, H1=전차선높이, H2=조가선 높이
-            slope_degree1, slope_degree2, h1, h2, pererall_d, sta2 = initialrize_tenstion_device(
-                pole.pos, pole.gauge, pole.span,contact_height,system_heigh, f_start_y)
-
-            mw = self.common.run(
-                self.al, imw_index, sta2, pole.next_pos, pole.z, pole.next_z,
-                (pererall_d,h2),(f_start_x,end_cw_height + end_system_height), pitch_angle, label='무효조가선')
-
-            mw.station = sta2
-            wire.add_wire(mw)
-
-            cw = self.common.run(
-                self.al, icw_index, sta2, pole.next_pos, pole.z, pole.next_z,
-                (pererall_d, h1), (f_start_x, end_cw_height + f_start_y), pitch_angle, label='무효전차선')
-            cw.station = sta2
-            wire.add_wire(cw)
+            self.wires_start(pole, next_pole, wire, cw_index, pitch_angle, o)
         elif role == SectionType.AJ_2:
-            # 본선
-            start_cw_height = self.datap.get_contact_wire_height(pole.structure)
-            end_cw_height = self.datap.get_contact_wire_height(next_pole.structure)
-            start_system_height = self.datap.get_system_height(pole.structure)
-            end_system_height = self.datap.get_system_height(next_pole.structure)
-            wire.add_wire(self.common.run(
-                self.al, cw_index, pole.pos, pole.next_pos, pole.z, pole.next_z,
-                (aj_start_x, start_cw_height), (aj_middle2_x, end_cw_height), pitch_angle, label='본선전차선')
-            )
-            # 무효선
-            imw_index = self.datap.get_inactive_mw_span(pole.span)
-            icw_index = self.datap.get_inactive_mw_span(pole.span)
-            wire.add_wire(self.common.run(
-                self.al, imw_index, pole.pos, pole.next_pos, pole.z, pole.next_z,
-                (f_start_x, start_cw_height + start_system_height), (aj_middle1_x, end_cw_height + end_system_height), pitch_angle, label='무효조가선')
-            )
-            wire.add_wire(self.common.run(
-                self.al, icw_index, pole.pos, pole.next_pos, pole.z, pole.next_z,
-                (f_start_x, start_cw_height + f_start_y), (aj_middle1_x, end_cw_height), pitch_angle, label='무효전차선')
-            )
+            self.wires_parallel_in(pole, next_pole, wire, cw_index, pitch_angle, o, insulators=False)
         elif role == SectionType.AJ_MIDDLE:
-            # 본선 >무효선 상승
-            start_cw_height = self.datap.get_contact_wire_height(pole.structure)
-            end_cw_height = self.datap.get_contact_wire_height(next_pole.structure)
-            start_system_height = self.datap.get_system_height(pole.structure)
-            end_system_height = self.datap.get_system_height(next_pole.structure)
-            #본선 -> 무효전차선
-            imw_index = self.datap.get_inactive_mw_span(pole.span)
-            icw_index = self.datap.get_inactive_mw_span(pole.span)
-            wire.add_wire(self.common.run(
-                self.al, icw_index, pole.pos, pole.next_pos, pole.z, pole.next_z,
-                (aj_middle2_x, start_cw_height), (f_end_x, end_cw_height + f_start_y), pitch_angle, label='무효전차선')
-            )
-            wire.add_wire(self.common.run(
-                self.al, imw_index, pole.pos, pole.next_pos, pole.z, pole.next_z,
-                (aj_middle2_x, start_cw_height + start_system_height), (f_end_x, end_cw_height + end_system_height), pitch_angle, label='무효조가선')
-            )
-
-            # 무효선 > 본선
-            wire.add_wire(self.common.run(
-                self.al, cw_index, pole.pos, pole.next_pos, pole.z, pole.next_z,
-                (aj_middle1_x, start_cw_height), (aj_end_x, end_cw_height), pitch_angle, label='무효->본선전차선')
-            )
-
+            self.wires_crossing(pole, next_pole, wire, cw_index, pitch_angle, o)
         elif role == SectionType.AJ_4:
-            # 본선
-            end_offset = next_pole.brackets[0].stagger
-            start_cw_height = self.datap.get_contact_wire_height(pole.structure)
-            end_cw_height = self.datap.get_contact_wire_height(next_pole.structure)
-            wire.add_wire(self.common.run(
-                self.al, cw_index, pole.pos, pole.next_pos, pole.z, pole.next_z,
-                (aj_end_x, start_cw_height), (end_offset, end_cw_height), pitch_angle, label='본선전차선')
-            )
-            # 무효선
-            imw_index = self.datap.get_inactive_mw_span(pole.span - 6)
-            icw_index = self.datap.get_inactive_cw_span(pole.span - 6)
-
-            # slope_degree1=전차선 각도, slope_degree2=조가선 각도, H1=전차선높이, H2=조가선 높이
-            slope_degree1, slope_degree2, h1, h2, pererall_d, sta2 = initialrize_tenstion_device(
-                pole.pos, pole.gauge, pole.span, contact_height, system_heigh, f_start_y)
-
-            wire.add_wire(self.common.run(
-                self.al, imw_index, pole.pos, pole.next_pos, pole.z, pole.next_z,
-                (f_end_x, start_cw_height + system_heigh), (pole.next_gauge, h2), pitch_angle, label='무효조가선')
-            )
-            wire.add_wire(self.common.run(
-                self.al, icw_index, pole.pos, pole.next_pos, pole.z, pole.next_z,
-                (f_end_x, start_cw_height + f_start_y), (pole.next_gauge, h1), pitch_angle, label='무효전차선')
-            )
+            h = dict(heights=self._heights(pole, next_pole), f_y=o['f_y'])
+            scw, ecw, _, _ = h['heights']
+            self._wire(wire, cw_index, pole, (o['end'], scw), (next_pole.brackets[0].stagger, ecw), pitch_angle,
+                       '본선전차선')
+            self._falling_to_tension(wire, pole, pitch_angle, 6, o['f_end'], h)
         elif role == SectionType.AJ_END:
-            # 본선
-            start_offset = pole.brackets[0].stagger
-            end_offset = next_pole.brackets[0].stagger
-            start_cw_height = self.datap.get_contact_wire_height(pole.structure)
-            end_cw_height = self.datap.get_contact_wire_height(next_pole.structure)
-
-            wire.add_wire(self.common.run(
-                self.al, cw_index, pole.pos, pole.next_pos, pole.z, pole.next_z,
-                (start_offset, start_cw_height), (end_offset, end_cw_height), pitch_angle, label='본선전차선')
-            )
+            self.wires_end(pole, next_pole, wire, cw_index, pitch_angle)
