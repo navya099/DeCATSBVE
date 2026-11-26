@@ -65,11 +65,11 @@ class AirSectionBracketAdder(SectionBracketBuilder):
         as_i = self.params.aj_bracket_values['I']
         pole.brackets.clear()
         if not end:
-            self.add_f_bracket(pole, f_o, f_x, f_y)
+            self.add_f_bracket(pole, f_o, f_x, f_y, spec='O')
             self.add_paired_bracket(pole, 'I', as_i, as_x, as_y)
         else:
             self.add_paired_bracket(pole, 'I', as_i, as_x, as_y)
-            self.add_f_bracket(pole, f_o, f_x, f_y)
+            self.add_f_bracket(pole, f_o, f_x, f_y, spec='O')
 
     # 이전 이름 호환
     add_as_bracket = SectionBracketBuilder.add_paired_bracket

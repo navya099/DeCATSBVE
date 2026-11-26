@@ -12,3 +12,5 @@ class Mast:
     rotation: float = 0.0
     base: MastBase | None = None
     accessories: list[MastAccessory] = None
+    role: str = ''          # 역할 (enums.component_role.ComponentRole)
+    spec: str = ''          # 형식·위치 등 세부 (I/O, L/R, P10 …)

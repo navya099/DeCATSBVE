@@ -4,6 +4,7 @@ from core.alignment.alignment import as_alignment
 from utils.math_util import change_permile_to_degree
 
 
+from enums.component_role import ComponentRole
 from enums.section_type import FlowStop, SectionType, section_role
 
 FLOWSTOP_TAGS = (FlowStop.START, FlowStop.MIDDLE, FlowStop.END)
@@ -166,13 +167,13 @@ class AnticreepingDeviceProcessor:
                         pole.pos, pole.next_pos, x1, x2)
                     if pole.structure != '터널':
                         pole.equipments.extend([
-                            EquipmentDATA(*self._equipment('흐름방지장치', '흐름방지장치_강관주용'), offset=(pole.gauge, 0), rotation=adjusted_angle, type='흐름방지장치'),
-                            EquipmentDATA(*self._equipment('봉강지선', '봉강지선'), offset=(pole.gauge, 0), rotation=0.0, type='봉강지선')
+                            EquipmentDATA(*self._equipment('흐름방지장치', '흐름방지장치_강관주용'), offset=(pole.gauge, 0), rotation=adjusted_angle, type='흐름방지장치', role=ComponentRole.ANTICREEP),
+                            EquipmentDATA(*self._equipment('봉강지선', '봉강지선'), offset=(pole.gauge, 0), rotation=0.0, type='봉강지선', role=ComponentRole.ANTICREEP_GUY)
                         ])
                     else:
                         pole.equipments.append(
                             EquipmentDATA(*self._equipment('흐름방지장치', '흐름방지장치_강관주용'), offset=(pole.gauge, 0),
-                                          rotation=adjusted_angle, type='흐름방지장치'))
+                                          rotation=adjusted_angle, type='흐름방지장치', role=ComponentRole.ANTICREEP))
                 elif device['tag'] == FlowStop.END:
                     x1 = pole.gauge
                     x2 = cw.offset[0]
@@ -180,13 +181,13 @@ class AnticreepingDeviceProcessor:
                         pole.pos, pole.next_pos, x1, x2)
                     if pole.structure != '터널':
                         pole.equipments.extend([
-                            EquipmentDATA(*self._equipment('흐름방지장치', '흐름방지장치_강관주용'), offset=(pole.gauge, 0), rotation=180 - adjusted_angle, type='흐름방지장치'),
-                            EquipmentDATA(*self._equipment('봉강지선', '봉강지선'), offset=(pole.gauge, 0), rotation=180, type='봉강지선')
+                            EquipmentDATA(*self._equipment('흐름방지장치', '흐름방지장치_강관주용'), offset=(pole.gauge, 0), rotation=180 - adjusted_angle, type='흐름방지장치', role=ComponentRole.ANTICREEP),
+                            EquipmentDATA(*self._equipment('봉강지선', '봉강지선'), offset=(pole.gauge, 0), rotation=180, type='봉강지선', role=ComponentRole.ANTICREEP_GUY)
                         ])
                     else:
                         pole.equipments.append(
                             EquipmentDATA(*self._equipment('흐름방지장치', '흐름방지장치_강관주용'), offset=(pole.gauge, 0),
-                                          rotation=180 - adjusted_angle, type='흐름방지장치'))
+                                          rotation=180 - adjusted_angle, type='흐름방지장치', role=ComponentRole.ANTICREEP))
     def _equipment(self, name, default_name):
         """(오브젝트 이름, 인덱스): 인덱스는 데이터셋 equipment, 이름은 인덱스 라이브러리 (없으면 기본 이름)"""
         index = self.wire_processor.pro.get_equipment_index(name)

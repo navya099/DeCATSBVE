@@ -22,8 +22,11 @@ def alignment_for(runner, track):
 def normalize(runner):
     """구버전 데이터(.dat) 보정: 전주 uid·flowstop 필드 추가, 구간 문자열 → SectionType,
     section 에 들어 있던 흐름방지 위치 → flowstop. 여러 번 호출해도 안전."""
+    from enums.component_role import fill_roles, known_indices
+    known = known_indices(runner.dataprocessor) if getattr(runner, 'dataprocessor', None) is not None else {}
     for poles in (runner.poledata or {}).values():
         for pole in poles:
+            fill_roles(pole, known)   # 구버전 .dat: 구성품 역할 추정
             if not getattr(pole, 'uid', None):
                 pole.uid = new_pole_uid()
             flowstop = FlowStop.parse(getattr(pole, 'flowstop', None))

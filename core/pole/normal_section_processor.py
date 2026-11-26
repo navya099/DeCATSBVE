@@ -1,4 +1,5 @@
 from core.equipment.equipment_data import EquipmentDATA
+from enums.component_role import ComponentRole
 from core.mast.mast_builder import MASTBuilder
 from core.pole.curve_section_processor import CurveSectionProcessor
 from core.pole.poledata import PoleDATA
@@ -34,7 +35,7 @@ class NormalSectionProcessor:
         mast = MASTBuilder.build(pole, dataprocessor, idxlib, rotation)
 
         #급전선 설비
-        equipment = EquipmentDATA(name=feeder_name,index=feeder_idx, offset=(pole.gauge,0),rotation=rotation,type='급전선설비')
+        equipment = EquipmentDATA(name=feeder_name,index=feeder_idx, offset=(pole.gauge,0),rotation=rotation,type='급전선설비', role=ComponentRole.FEEDER)
 
         #pole에 기록
         pole.mast = mast
