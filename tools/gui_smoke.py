@@ -288,6 +288,22 @@ for kid, k in (('airjoint_2span_double_pole', 4), ('airsection_single', 5), ('ai
             failures.append('배치도에 복주 뒤 전주가 따로 강조되지 않음')
         else:
             print(f'[OK] 복주 -B 행 선택 → 배치도 {mid.post_number}-B ({rear.station}m)')
+        # 배치도 클릭으로 선택: 앞 전주(-F) 위치 클릭 → 테이블·편집기 선택이 -F 로
+        from types import SimpleNamespace  # noqa: E402
+        front = pole_units.PoleUnit(mid, pole_units.FRONT)
+        fx, fy = front.coord(alignment_for(runner, 'main'))
+        pl.ax.set_xlim(fx - 3, fx + 3); pl.ax.set_ylim(fy - 3, fy + 3); pl.canvas.draw(); app.update()
+        px, py = pl.ax.transData.transform((fx, fy))
+        pl.on_click(SimpleNamespace(button=1, inaxes=pl.ax, dblclick=False, x=px, y=py)); app.update()
+        if (ed.selected_pole is None or ed.selected_pole.pole is not mid or ed.selected_pole.which != 0
+                or ed.tree_main.selection() != (front.key,)):
+            failures.append('배치도 클릭이 복주 앞 전주(-F)를 선택하지 않음')
+        else:
+            print(f'[OK] 배치도 클릭 → {mid.post_number}-F 선택')
+        n_sel = ed.tree_main.selection()
+        pl.on_click(SimpleNamespace(button=1, inaxes=pl.ax, dblclick=False, x=px + 200, y=py + 200)); app.update()
+        if ed.tree_main.selection() != n_sel:
+            failures.append('배치도 빈 곳 클릭이 선택을 바꿈')
     iid = next(i for i, inst in sx._instances.items() if inst.kind and inst.kind.id == kid and inst.start_pos == p.pos)
     sx.list_tree.selection_set(iid); sx.goto_selected(); app.update()
     if ed.selected_pole is None or ed.selected_pole.pole.pos != p.pos:
@@ -368,7 +384,26 @@ if cw(p.pos).end_point != (0.33, 5.31):
 select('main', p.pos)      # 편집기가 선택을 따라옴
 app.update()
 we.label_var.set('부급전선')
-we.index_var.set(1239)
+# 오브젝트 인덱스는 라이브러리 검색으로 고름 (1239 가 있으면 그 이름으로 검색)
+want_name = runner.idxlib.get_name(1239) or str(runner.idxlib.df.iloc[0]['파일명'])
+we.obj_search_var.set(want_name); we.search_object(); app.update()
+choices = list(we.obj_combo.cget('values'))
+if not choices:
+    failures.append('전선 편집기 오브젝트 검색 결과 없음')
+else:
+    we.obj_search_var.set(choices[0]); we._on_object_pick(); app.update()
+    picked_index = we.index_var.get()
+    if runner.idxlib.get_name(picked_index) is None or not we.obj_name_var.get().startswith('오브젝트:'):
+        failures.append('전선 편집기 오브젝트 검색 선택이 인덱스에 반영되지 않음')
+    print(f'     전선 추가 오브젝트: {we.obj_name_var.get()} [{picked_index}]')
+# 라이브러리에 없는 인덱스는 거부
+we.index_var.set(987654); app.update()
+n_added_before = len([i for i in we.tree.get_children() if i.startswith('added:')])
+we.add_wire(); app.update()
+if len([i for i in we.tree.get_children() if i.startswith('added:')]) != n_added_before:
+    failures.append('라이브러리에 없는 인덱스로 전선이 추가됨')
+if choices:
+    we.index_var.set(picked_index)
 we.sx_var.set(-2.5); we.sy_var.set(7.0); we.ex_var.set(-2.5); we.ey_var.set(7.0)
 we.add_wire()
 check('전선 추가')

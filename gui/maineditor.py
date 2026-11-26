@@ -364,6 +364,17 @@ class AutoPoleEditor(tk.Frame):
         """구간 편집기 열기 (선택한 전주 = 추가할 구간의 시작 전주, 이후 편집기 선택을 따라감)"""
         return SectionEditor(self.runner, self.events, selection=self.selected_pole, focus_callback=self.focus_pole)
 
+    def select_unit(self, track, key):
+        """전주 단위 행(PoleUnit.key) 선택 — 배치도 클릭 선택에서 호출. 다른 화면에 선택 이벤트를 보냄"""
+        tree = self.tree_main if track == 'main' else self.tree_sub
+        if not tree.exists(key):
+            return False
+        self.notebook.select(0 if track == 'main' else 1)
+        tree.selection_set(key)
+        tree.see(key)
+        self.load_selected()
+        return True
+
     def focus_pole(self, track, pos):
         """테이블에서 해당 전주를 선택하고 다른 화면에도 선택을 알림"""
         tree = self.tree_main if track == 'main' else self.tree_sub

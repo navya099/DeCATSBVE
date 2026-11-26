@@ -7,6 +7,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 
 from core.model_rebuilder import rebuild
+from core.pole import pole_edit
 from core.wire import wire_overrides
 from event.events import MODEL_CHANGED, WIRE_SELECTED
 
@@ -84,6 +85,20 @@ class WireEditor(tk.Toplevel):
                         variable=self.link_var).grid(row=3, column=0, columnspan=4, sticky="w", padx=6, pady=3)
         ttk.Label(form, text="※ 이름·인덱스는 '전선 추가' 때만 사용합니다. 각도는 지지점과 선형으로 자동 계산됩니다.",
                   foreground="#6b7280").grid(row=4, column=0, columnspan=4, sticky="w", padx=6)
+
+        # 오브젝트 인덱스: 인덱스 라이브러리에서 이름으로 검색해 고르기 (직접 입력도 가능)
+        ttk.Label(form, text="오브젝트 검색").grid(row=5, column=0, padx=6, pady=3, sticky="e")
+        self.obj_search_var = tk.StringVar()
+        self.obj_combo = ttk.Combobox(form, textvariable=self.obj_search_var, width=32)
+        self.obj_combo.grid(row=5, column=1, columnspan=2, padx=6, pady=3, sticky="w")
+        self.obj_combo.bind("<Return>", lambda e: self.search_object())
+        self.obj_combo.bind("<<ComboboxSelected>>", self._on_object_pick)
+        ttk.Button(form, text="라이브러리 검색", command=self.search_object).grid(row=5, column=3, padx=6, pady=3,
+                                                                          sticky="w")
+        self.obj_name_var = tk.StringVar()
+        ttk.Label(form, textvariable=self.obj_name_var, foreground="#1d4ed8").grid(
+            row=6, column=0, columnspan=4, sticky="w", padx=6)
+        self.index_var.trace_add('write', lambda *_: self._show_object_name())
 
         buttons = ttk.Frame(self)
         buttons.pack(fill="x", padx=10, pady=(0, 6))
@@ -244,6 +259,45 @@ class WireEditor(tk.Toplevel):
             self._commit(f'전선 삭제: {row.label}')
         self._run(action)
 
+    # ── 오브젝트 검색 ──────────────────────────────
+    def _idxlib(self):
+        """인덱스 라이브러리 (없거나 비어 있으면 None — 그때는 인덱스 검사 없이 직접 입력)"""
+        lib = getattr(self.runner, 'idxlib', None)
+        df = getattr(lib, 'df', None)
+        return lib if df is not None and not df.empty else None
+
+    def search_object(self):
+        """인덱스 라이브러리에서 이름으로 검색 → 목록에서 고르면 오브젝트 인덱스에 채움"""
+        lib = self._idxlib()
+        if lib is None:
+            self.message_var.set('인덱스 라이브러리가 없습니다 (라이브러리 갱신 후 다시 검색하세요)')
+            return
+        results = pole_edit.search(lib, self.obj_search_var.get())
+        self._object_results = {f'{name}  [{idx}]': (name, idx) for name, idx in results}
+        self.obj_combo.config(values=list(self._object_results))
+        self.message_var.set(f'검색 결과 {len(results)}개' if results else '검색 결과가 없습니다')
+        if results:
+            self.obj_combo.event_generate('<Down>')
+
+    def _on_object_pick(self, _event=None):
+        picked = getattr(self, '_object_results', {}).get(self.obj_search_var.get())
+        if picked:
+            self.index_var.set(picked[1])
+
+    def _show_object_name(self):
+        """입력한 인덱스의 오브젝트 이름 표시 (라이브러리에 없으면 알림)"""
+        lib = self._idxlib()
+        try:
+            index = int(self.index_var.get())
+        except (tk.TclError, ValueError):
+            self.obj_name_var.set('')
+            return
+        if lib is None:
+            self.obj_name_var.set('')
+            return
+        name = lib.get_name(index)
+        self.obj_name_var.set(f'오브젝트: {name}' if name else f'인덱스 {index} 은(는) 인덱스 라이브러리에 없습니다')
+
     def add_wire(self):
         def action():
             label = self.label_var.get().strip()
@@ -253,6 +307,9 @@ class WireEditor(tk.Toplevel):
                 index = int(self.index_var.get())
             except (tk.TclError, ValueError):
                 raise ValueError('오브젝트 인덱스는 정수로 입력하세요.') from None
+            lib = self._idxlib()
+            if lib is not None and lib.get_name(index) is None:
+                raise ValueError(f'인덱스 {index} 가 인덱스 라이브러리에 없습니다. 오브젝트 검색으로 고르세요.')
             start, end = self._points()
             self.selected_key = wire_overrides.add_wire(self.runner, self.track, self.pos, label, index, start, end)
             self._commit(f'전선 추가: {label} (인덱스 {index})')
