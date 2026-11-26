@@ -49,15 +49,32 @@ def get_max_span_at(pos, design_speed, curvelist=None, structure_list=None):
     return limit
 
 
+def span_check_points(start, end, block=25):
+    """경간 한도를 확인할 측점: 시작점, 경간 안의 블록(25m) 경계, 끝점
+    (곡선·구조물은 블록 단위라 블록마다 한 번씩 보면 경간이 걸치는 모든 구간을 본다)"""
+    points = [start]
+    k = math.floor(start / block) + 1
+    while k * block < end:
+        points.append(k * block)
+        k += 1
+    points.append(end)
+    return points
+
+
+def get_max_span_between(start, end, design_speed, curvelist=None, structure_list=None):
+    """start~end 경간이 걸치는 모든 측점(시작·안쪽 블록·끝) 중 가장 엄격한 최대 경간"""
+    return min(get_max_span_at(p, design_speed, curvelist, structure_list) for p in span_check_points(start, end))
+
+
 def get_span_from(pos, design_speed, curvelist=None, structure_list=None):
-    """pos 에서 시작하는 경간 길이: 경간 시작점과 끝점 모두의 최대 경간을 넘지 않는 값
-    (직선에서 시작해 급곡선·터널 안에서 끝나는 경간이 직선 한도로 길어지지 않도록)"""
+    """pos 에서 시작하는 경간 길이: 경간이 걸치는 시작점·끝점·안쪽 모든 블록의 최대 경간을 넘지 않는 값
+    (직선에서 시작해 급곡선·터널 안에서 끝나거나, 경간 가운데에만 짧은 급곡선이 있는 경우 포함)"""
     span = get_max_span_at(pos, design_speed, curvelist, structure_list)
     while True:
-        end_limit = get_max_span_at(pos + span, design_speed, curvelist, structure_list)
-        if end_limit >= span:
+        limit = get_max_span_between(pos, pos + span, design_speed, curvelist, structure_list)
+        if limit >= span:
             return span
-        span = end_limit
+        span = limit
 
 
 def distribute_pole_spacing_flexible(start_m, end_m, curvelist=None,structure_list=None, design_speed=0):

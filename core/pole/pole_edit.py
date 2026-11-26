@@ -435,12 +435,12 @@ def move_pole(runner, pole, new_pos, alignment):
 
 
 def span_limit_notice(runner, start_pos, end_pos, label=''):
-    """경간이 설계 최대 경간(설계속도·곡선 반경·터널, 시작·끝 측점 중 엄격한 값)을 넘으면 안내 문구, 아니면 None.
-    경간표에 있는 경간이면 전선은 만들어지므로 거부하지 않고 알리기만 한다."""
-    from utils.comom_util import get_max_span_at
+    """경간이 설계 최대 경간(설계속도·곡선 반경·터널, 경간이 걸치는 시작·안쪽 블록·끝 중 엄격한 값)을 넘으면
+    안내 문구, 아니면 None. 경간표에 있는 경간이면 전선은 만들어지므로 거부하지 않고 알리기만 한다."""
+    from utils.comom_util import get_max_span_between
     speed = getattr(runner, 'designspeed', None)
     try:
-        limit = min(get_max_span_at(p, speed, runner.curvelist, runner.structure_list) for p in (start_pos, end_pos))
+        limit = get_max_span_between(start_pos, end_pos, speed, runner.curvelist, runner.structure_list)
     except ValueError:
         return None  # 최대 경간 기준이 없는 설계속도
     span = end_pos - start_pos
