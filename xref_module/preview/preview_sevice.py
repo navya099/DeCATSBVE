@@ -1,4 +1,3 @@
-import os
 
 from xref_module.filefinder import FileLocator
 from xref_module.path_resolver import PathResolver
