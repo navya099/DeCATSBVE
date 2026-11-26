@@ -2,8 +2,6 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from tkinter.filedialog import askopenfilename
 
-from core.pole.manual_pole_processor import ManualPoleProcessor
-from core.structure.define_structure import isbridge_tunnel
 from core.model_rebuilder import alignment_for, rebuild
 from core.pole import pole_edit
 from core.pole import pole_units
@@ -14,7 +12,6 @@ from gui.section_editor import SectionEditor
 from gui.wireeditor import WireEditor
 from vms.editable_pole import EditablePole
 from vms.editable_wires import EditableWire
-from enums.section_type import SectionType
 
 
 class AutoPoleEditor(tk.Frame):
@@ -171,10 +168,19 @@ class AutoPoleEditor(tk.Frame):
         return 'main' if self.notebook.tab(self.notebook.select(), "text") == "본선" else 'sub'
 
     def commit_change(self, message=None):
-        """runner.poledata 를 고친 뒤 호출: 파생 데이터 재계산 → MODEL_CHANGED 로 모든 화면 갱신"""
+        """runner.poledata 를 고친 뒤 호출: 파생 데이터 재계산 → MODEL_CHANGED 로 모든 화면 갱신.
+        재계산에서 새로 빠진 전선이 생기면 경고"""
+        before = set(getattr(self.runner, 'wire_errors', None) or [])
         rebuild(self.runner)
         if message:
             self.runner.log(message)
+        new_errors = [e for e in (self.runner.wire_errors or []) if e not in before]
+        if new_errors:
+            for e in new_errors:
+                self.runner.log(f'⚠️ {e}')
+            messagebox.showwarning('전선 생성 오류', '편집 후 다음 경간의 전선이 만들어지지 않았습니다.\n\n'
+                                   + '\n'.join(new_errors[:15])
+                                   + (f'\n… 외 {len(new_errors) - 15}건' if len(new_errors) > 15 else ''))
         self.notify_model_changed()
 
     def notify_model_changed(self):
@@ -377,7 +383,6 @@ class AutoPoleEditor(tk.Frame):
 
     def add_pole(self):
         track = self._current_track()
-        poles = self.runner.poledata[track]
         al = alignment_for(self.runner, track)
 
         #UI열기
@@ -387,23 +392,15 @@ class AutoPoleEditor(tk.Frame):
 
         if not values:  # 취소 시
             return
-
-        poledict = addui.comfirm()
-        side = -1 if poledict['gauge'] < 0 else 1
-        # PoleDATA 객체 생성 (필수 속성만, 나머지는 기본값)
-        new_pole = ManualPoleProcessor.create_pole(
-            al,self.runner.dataprocessor,self.runner.idxlib, self.runner.curvelist, self.runner.pitchlist,self.runner.structure_list,
-            int(poledict['pos']), poledict['post_number'], poledict['gauge'], poledict['section'], poledict['base_type'], track, side)
-
-        # pos 기준으로 삽입 위치 찾기
-        insert_idx = len(poles)
-        for i, p in enumerate(poles):
-            if p.pos > new_pole.pos:
-                insert_idx = i
-                break
-
-        poles.insert(insert_idx, new_pole)
+        try:
+            new_pole, notices = pole_edit.add_pole(self.runner, track, values['pos'], values['post_number'],
+                                                   values['gauge'], values['base_type'], al)
+        except ValueError as e:
+            messagebox.showerror('전주 추가 불가', str(e))
+            return
         self.commit_change(f'전주 추가 성공 {new_pole.post_number} at {new_pole.pos}')
+        if notices:
+            messagebox.showwarning('전주 추가', '\n'.join(notices))
 
     def delete_pole(self):
         current_tab = self.notebook.tab(self.notebook.select(), "text")
@@ -515,38 +512,18 @@ class AutoPoleEditor(tk.Frame):
         entry.focus()
 
     def add_pole_with_file(self):
-        xlsxname = askopenfilename()
+        """전주 배치표(엑셀: 시트 main/sub, 열 전주번호·측점·기본타입·구간)로 전주를 통째로 바꾼다"""
+        xlsxname = askopenfilename(filetypes=[('Excel', '*.xlsx *.xls'), ('모든 파일', '*.*')])
+        if not xlsxname:
+            return
         import pandas as pd
-        sheets = pd.read_excel(xlsxname, sheet_name=None)
-
-        for sheet_name, df in sheets.items():
-            poles = []  # 시트별 리스트 초기화
-            for _, row in df.iterrows():
-                post_number = row['전주번호']
-                pos = int(row['측점'])
-                base_type = row['기본타입']
-                section = SectionType.parse(row['구간'])
-
-                current_structure = isbridge_tunnel(pos, self.runner.structure_list)
-                gauge = self.runner.dataprocessor.get_pole_gauge(current_structure)
-                if self.runner.track_direction[sheet_name] == -1:
-                    side = -1
-                else:
-                    side = 1
-                gauge *= side
-                new_pole = ManualPoleProcessor.create_pole(
-                    self.runner.alignment_by_track[sheet_name],
-                    self.runner.dataprocessor,
-                    self.runner.idxlib,
-                    self.runner.curvelist,
-                    self.runner.pitchlist,
-                    self.runner.structure_list,
-                    pos, post_number, gauge, section, base_type, sheet_name, side
-                )
-
-                poles.append(new_pole)
-
-            # 시트별 저장 (연결·전선·흐름방지는 아래에서 한 번에 재계산)
-            self.runner.poledata[sheet_name] = poles
+        try:
+            sheets = pd.read_excel(xlsxname, sheet_name=None)
+            notices = pole_edit.load_pole_table(self.runner, sheets)
+        except Exception as e:
+            messagebox.showerror('전주 배치표 불러오기 실패', str(e))
+            return
         self.selected_pole = None
         self.commit_change(f"엑셀 전주데이터가 로드되었습니다. 계:{len(self.runner.poledata['main'])}")
+        if notices:
+            messagebox.showwarning('전주 배치표', '\n'.join(notices))

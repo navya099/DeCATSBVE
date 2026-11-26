@@ -334,3 +334,83 @@ def test_delete_pole(setup):
     last = poles[-1]
     assert pe.delete_pole(runner, last) == []
     assert len(poles) == n - 1 and last not in poles and poles[i] is pole
+
+
+# ── 전주 추가·삭제·배치표 불러오기 검증 ─────────────────────
+def test_delete_section_pole_rejected(setup):
+    runner, poles, _ = setup
+    aj = next(p for p in poles if p.section is not None)
+    n = len(poles)
+    with pytest.raises(ValueError, match='구간 편집'):
+        pe.delete_pole(runner, aj)
+    assert len(poles) == n
+
+
+def test_add_pole_validation_and_structure(setup):
+    runner, poles, pole = setup
+    al = alignment_for(runner, 'main')
+    i = poles.index(pole)
+    mid = (poles[i].pos + poles[i + 1].pos) / 2
+    n = len(poles)
+    for bad in (dict(pos=poles[i].pos),                             # 같은 측점
+                dict(post_number=poles[i].post_number),             # 중복 번호
+                dict(post_number=' '),                              # 빈 번호
+                dict(gauge=0), dict(base_type='X'),
+                dict(pos=al.end + 100),                             # 선형 밖
+                dict(pos=poles[i].pos + 0.5)):                      # 경간표에 없는 경간 (0.5m)
+        args = dict(pos=mid, post_number='NEW', gauge=pole.gauge, base_type='I') | bad
+        with pytest.raises(ValueError):
+            pe.add_pole(runner, 'main', args['pos'], args['post_number'], args['gauge'], args['base_type'], al)
+    aj = next(i for i in se_sections(runner) if i.kind is not None)
+    with pytest.raises(ValueError, match='구간'):
+        pe.add_pole(runner, 'main', (aj.poles[1].pos + aj.poles[2].pos) / 2, 'NEW', pole.gauge, 'I', al)
+    assert len(poles) == n
+    # 정상 추가: 측점 순 위치, 앞뒤 연결, 구조물에 맞는 구성
+    try:
+        new, _ = pe.add_pole(runner, 'main', mid, 'NEW', pole.gauge, 'I', al)
+    except ValueError:
+        pytest.skip('중간 경간이 경간표에 없음')
+    assert poles[i + 1] is new and poles[i].next_pos == new.pos and new.next_pos == poles[i + 2].pos
+    assert new.brackets and new.mast is not None
+    quiet_rebuild(runner)
+
+
+def se_sections(runner):
+    from core.section_edit import find_sections
+    return find_sections(runner, 'main')
+
+
+def pole_table(poles):
+    return pd.DataFrame([{'전주번호': p.post_number, '측점': p.pos, '기본타입': p.base_type,
+                          '구간': str(p.section) if p.section else None} for p in poles])
+
+
+def test_load_pole_table_reproduces_auto_layout(tmp_path):
+    """자동 배치 결과를 배치표로 내보냈다 다시 불러오면 같은 출력 (구간 전주도 구간 구성품으로)"""
+    runner = run_case('synthetic_double_rail_150')
+    expected = outputs(runner, tmp_path, 'auto')
+    sheets = {t: pole_table(ps) for t, ps in runner.poledata.items()}
+    assert pe.load_pole_table(runner, sheets) == []
+    quiet_rebuild(runner)
+    assert outputs(runner, tmp_path, 'loaded') == expected
+
+
+def test_load_pole_table_rejects_bad_tables_without_changes():
+    runner = run_case()
+    before = list(runner.poledata['main'])
+    good = pole_table(before)
+    dup = pd.concat([good, good.iloc[[3]]])
+    for sheets in ({'main': dup},                                                     # 중복
+                   {'main': good.drop(columns=['기본타입'])},                          # 열 없음
+                   {'메인': good},                                                    # 트랙 이름
+                   {'sub': good},                                                     # 단선에 상선
+                   {'main': good.assign(구간=['없는구간'] * len(good))}):
+        with pytest.raises(ValueError):
+            pe.load_pole_table(runner, sheets)
+        assert runner.poledata['main'] == before
+    # 불완전 구간은 불러오되 안내
+    broken = good.copy()
+    k = next(j for j, s in enumerate(broken['구간']) if isinstance(s, str))
+    broken.loc[k, '구간'] = None
+    notices = pe.load_pole_table(runner, {'main': broken})
+    assert any('불완전 구간' in n for n in notices)

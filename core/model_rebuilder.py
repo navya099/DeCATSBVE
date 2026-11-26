@@ -97,6 +97,7 @@ def rebuild(runner):
     runner.wire_processor = WireProcessor(runner.dataprocessor, runner.alignment_by_track,
                                           runner.poledata, runner.curvelist)
     runner.wire_data = runner.wire_processor.process_to_wire()
+    runner.wire_errors = list(runner.wire_processor.errors)
 
     # 2-1) 전선 상세 편집 내용(경간 단위) 다시 적용. 흐름방지선이 편집된 전차선 기준으로 만들어지도록 흐름방지보다 먼저
     applied, pruned = wire_overrides.apply(runner, alignment_for)

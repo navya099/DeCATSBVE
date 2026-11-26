@@ -141,3 +141,15 @@ def test_span_from_respects_end_point_limit():
     positions = distribute_pole_spacing_flexible(0, 3000, CURVES, STRUCT, 150)
     for a, b in zip(positions, positions[1:]):
         assert b - a <= min(get_max_span_at(p, 150, CURVES, STRUCT) for p in (a, b))
+
+
+def test_span_avoids_short_sharp_curve_inside_span():
+    """경간 가운데에만 걸치는 짧은 급곡선(1블록)도 한도 적용"""
+    from utils.comom_util import get_max_span_between, span_check_points
+    curves = [(1525, 300, 0.1)]                       # 1525~1550 한 블록만 R300
+    assert span_check_points(1500, 1560) == [1500, 1525, 1550, 1560]
+    assert get_max_span_between(1500, 1560, 250, curves, STRUCT) == 35
+    assert get_span_from(1500, 250, curves, STRUCT) == 35
+    positions = distribute_pole_spacing_flexible(0, 3000, curves, STRUCT, 250)
+    for a, b in zip(positions, positions[1:]):
+        assert b - a <= get_max_span_between(a, b, 250, curves, STRUCT)
