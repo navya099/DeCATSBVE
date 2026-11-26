@@ -62,15 +62,18 @@ class BaseRunner:
         self.airjoint_type = 'single'
         # 복주 쌍 전주 간격(m). None 이면 데이터셋 airjoint.double_pole.spacing
         self.double_pole_spacing = None
+        # 복주 급전선설비: 'both' 두 전주 | 'front' 앞 전주만 | None 데이터셋 airjoint.double_pole.feeder
+        self.double_pole_feeder = None
         self.alignment = None
         self.sub_rail_key: int | None = None
         # 전선 상세 편집 내용 (경간 단위 지지점 수정·전선 추가/삭제): core/wire/wire_overrides.py 참고
         self.wire_overrides = {}
 
     def apply_dataset_options(self):
-        """실행 설정 중 데이터셋 값을 덮어쓰는 항목을 데이터셋 겟터에 반영 (복주 쌍 전주 간격)"""
+        """실행 설정 중 데이터셋 값을 덮어쓰는 항목을 데이터셋 겟터에 반영 (복주 쌍 전주 간격·급전선설비)"""
         if getattr(self, 'dataprocessor', None) is not None:
             self.dataprocessor.double_pole_spacing_override = getattr(self, 'double_pole_spacing', None)
+            self.dataprocessor.double_pole_feeder_override = getattr(self, 'double_pole_feeder', None)
 
     def run(self):
         raise NotImplementedError("자식 클래스에서 구현하세요")

@@ -224,3 +224,20 @@ def test_ui_spacing_overrides_dataset(tmp_path):
     runner.double_pole_spacing = None
     runner.apply_dataset_options()
     assert runner.dataprocessor.get_double_pole_settings()['spacing'] == 1.0
+
+
+def test_ui_feeder_overrides_dataset():
+    """실행 설정의 급전선설비(두 전주/앞 전주만)가 데이터셋 값보다 우선, None 이면 데이터셋 값"""
+    runner = run_case(airjoint_type='double_pole', double_pole_feeder='front')
+    for p in paired(runner.poledata['main']):
+        assert not any(e.type == '급전선설비' for e in p.twin.equipments)
+        assert sum(e.type == '급전선설비' for e in p.equipments) == 1
+    runner.dataprocessor.dataset['airjoint']['double_pole']['feeder'] = 'front'
+    runner.double_pole_feeder = 'both'
+    runner.apply_dataset_options()
+    assert runner.dataprocessor.get_double_pole_settings()['feeder'] == 'both'
+    runner.double_pole_feeder = None
+    runner.apply_dataset_options()
+    assert runner.dataprocessor.get_double_pole_settings()['feeder'] == 'front'
+    with pytest.raises(ValueError):
+        run_case(airjoint_type='double_pole', double_pole_feeder='middle')

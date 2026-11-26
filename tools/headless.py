@@ -53,6 +53,7 @@ DEFAULTS = {
     'custom_json': None, 'custom_spandata': None,
     'airjoint_type': 'single',   # 'single' 단주 | 'double_pole' 복주
     'double_pole_spacing': None,  # 복주 쌍 전주 간격(m), None = 데이터셋 값
+    'double_pole_feeder': None,   # 복주 급전선설비 'both' | 'front', None = 데이터셋 값
 }
 PATH_KEYS = ('alignment', 'coord', 'curve', 'pitch', 'structure', 'rail_info', 'idxlib', 'custom_json',
              'custom_spandata')
@@ -120,6 +121,11 @@ def build_runner(cfg):
     r.airjoint_type = cfg['airjoint_type']
     if cfg['double_pole_spacing'] is not None:
         r.double_pole_spacing = float(cfg['double_pole_spacing'])
+    if cfg['double_pole_feeder'] is not None:
+        if cfg['double_pole_feeder'] not in DatasetGetter.DOUBLE_POLE_FEEDER:
+            raise ValueError(f"double_pole_feeder 는 {'/'.join(DatasetGetter.DOUBLE_POLE_FEEDER)} 중 하나: "
+                             f"{cfg['double_pole_feeder']}")
+        r.double_pole_feeder = cfg['double_pole_feeder']
 
     custom = bool(cfg['custom_json'])
     r.iscustommode = int(custom)
