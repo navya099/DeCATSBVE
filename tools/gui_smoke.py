@@ -58,6 +58,10 @@ sub_line = (load_rail_line(cfg['rail_info'], cfg['sub_rail'], len(main_line), ma
 failures = []
 
 
+from core.pole import pole_units  # noqa: E402
+from core.model_rebuilder import alignment_for  # noqa: E402
+
+
 def plotted_points():
     n = 0
     for coll in pl.ax.collections:
@@ -71,16 +75,18 @@ def check(step):
     app.update()
     poles = {t: runner.poledata[t] for t in runner.poledata}
     rows = {'main': len(ed.tree_main.get_children()), 'sub': len(ed.tree_sub.get_children())}
-    total = sum(len(v) for v in poles.values())
+    # 실제 전주 단위 (복주 지지점은 앞 -F / 뒤 -B 두 행·두 점)
+    units = {t: pole_units.track_units(ps) for t, ps in poles.items()}
+    total = sum(len(v) for v in units.values())
     msgs = []
     for t, ps in poles.items():
-        if rows[t] != len(ps):
-            msgs.append(f'{t} 테이블 {rows[t]}행 ≠ 전주 {len(ps)}')
-        # 테이블 측점 = 데이터 측점
+        if rows[t] != len(units[t]):
+            msgs.append(f'{t} 테이블 {rows[t]}행 ≠ 전주 {len(units[t])}')
+        # 테이블 전주번호·측점 = 전주 단위 번호·측점
         tree = ed.tree_main if t == 'main' else ed.tree_sub
-        tps = [float(tree.item(c, 'values')[1]) for c in tree.get_children()]
-        if tps != [float(p.pos) for p in ps]:
-            msgs.append(f'{t} 테이블 측점 불일치')
+        tps = [(str(tree.item(c, 'values')[0]), float(tree.item(c, 'values')[1])) for c in tree.get_children()]
+        if tps != [(u.label, float(u.station)) for u in units[t]]:
+            msgs.append(f'{t} 테이블 전주번호·측점 불일치')
         # 전주 연결
         for a, b in zip(ps, ps[1:]):
             if a.next_pos == b.pos and a.span != b.pos - a.pos:
@@ -243,6 +249,20 @@ for kid, k in (('airjoint_2span_double_pole', 4), ('airsection_single', 5), ('ai
     if kid == 'airjoint_2span_double_pole' and [q.twin is not None for q in found[0].poles] != [False, True, True,
                                                                                                True, False]:
         failures.append('복주 에어조인트 2·3·4호주에 두 번째 전주가 없음')
+    if kid == 'airjoint_2span_double_pole':
+        # 테이블에서 복주 뒤 전주(-B) 행 선택 → 배치도에 뒤 전주 위치·번호로 강조
+        mid = found[0].poles[2]
+        rear = pole_units.PoleUnit(mid, pole_units.REAR)
+        ed.notebook.select(0); ed.tree_main.selection_set(rear.key); ed.load_selected(); app.update()
+        want = rear.coord(alignment_for(runner, 'main'))
+        if (ed.selected_pole is None or ed.selected_pole.pole is not mid or ed.selected_pole.which != 1
+                or ed.entry_post_number_var.get() != f'{mid.post_number}-B'):
+            failures.append('테이블 복주 -B 행 선택이 뒤 전주로 잡히지 않음')
+        elif (pl.selected_pole_text is None or pl.selected_pole_text.get_text() != f'{mid.post_number}-B'
+              or max(abs(a - b) for a, b in zip(pl.sel_xy, want)) > 1e-6):
+            failures.append('배치도에 복주 뒤 전주가 따로 강조되지 않음')
+        else:
+            print(f'[OK] 복주 -B 행 선택 → 배치도 {mid.post_number}-B ({rear.station}m)')
     iid = next(i for i, inst in sx._instances.items() if inst.kind and inst.kind.id == kid and inst.start_pos == p.pos)
     sx.list_tree.selection_set(iid); sx.goto_selected(); app.update()
     if ed.selected_pole is None or ed.selected_pole.pole.pos != p.pos:

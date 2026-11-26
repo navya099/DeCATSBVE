@@ -92,7 +92,7 @@ class BVECSV:
                     for offset, p_mast, p_eqs, on_twin in ((front_offset, mast, eqs, False),
                                                            (rear_offset, pole.twin.mast, pole.twin.equipments, True)):
                         p = round(pos + offset, 6)
-                        self.lines.append(f',;복주 {"뒤" if on_twin else "앞"} 전주\n')
+                        self.lines.append(f',;{post_number}-{"B" if on_twin else "F"} (복주 {"뒤" if on_twin else "앞"} 전주)\n')
                         write_mast(p, p_mast)
                         write_mast_accessories(p, p_mast)
                         write_base(p, p_mast)

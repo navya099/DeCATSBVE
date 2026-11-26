@@ -10,6 +10,7 @@ from tkinter import ttk, messagebox
 from core.model_rebuilder import alignment_for, rebuild
 from core.pole import pole_edit
 from enums.section_type import section_label
+from core.pole import pole_units
 from event.events import MODEL_CHANGED, POLE_SELECTED
 
 TRACK_TEXT = {'main': '본선', 'sub': '상선'}
@@ -31,6 +32,7 @@ class PoleEditor(tk.Toplevel):
         self.runner = runner
         self.event = event
         self.pole = None
+        self.which = None   # 복주 앞(0)/뒤(1) 전주 (테이블 -F / -B 행)
         self.selected_key = None
         self._bound = False
 
@@ -142,9 +144,15 @@ class PoleEditor(tk.Toplevel):
     # ── 표시 ───────────────────────────────────────
     def show_pole(self, selection):
         pole = getattr(selection, 'pole', selection)
-        if pole is not self.pole:
+        which = getattr(selection, 'which', None) if getattr(pole, 'twin', None) is not None else None
+        if pole is not self.pole or which != getattr(self, 'which', None):
             self.selected_key = None
+            if which is not None:   # 복주 앞/뒤 전주를 고르면 그 전주의 기둥(없으면 첫 브래킷) 선택
+                self.selected_key = next((r.key for r in pole_edit.components(pole)
+                                          if pole_edit.component_pole(pole, r.key) == which
+                                          and r.kind in ('mast', 'br')), None)
         self.pole = pole
+        self.which = which
         if pole is not None:
             self.gauge_var.set(pole.gauge)
         self.refresh()
@@ -156,7 +164,10 @@ class PoleEditor(tk.Toplevel):
             self.header_var.set('편집기에서 전주를 선택하세요')
             self._update_buttons(None)
             return
-        self.header_var.set(f'[{TRACK_TEXT.get(pole.track, pole.track)}] {pole.post_number} ({pole.pos}m)  '
+        unit = pole_units.PoleUnit(pole, getattr(self, 'which', None) if pole.twin is not None else None)
+        twin_text = (f'  복주 {pole_units.SIDE_TEXT[unit.which]} (지지점 {pole.pos}m, 구성품 행에 앞/뒤 표시)'
+                     if unit.which is not None else '')
+        self.header_var.set(f'[{TRACK_TEXT.get(pole.track, pole.track)}] {unit.label} ({unit.station}m){twin_text}  '
                             f'{section_label(pole)} / {pole.structure} / {"곡선" if pole.radius else "직선"}  '
                             f'게이지 {pole.gauge}')
         for r in pole_edit.components(pole):
@@ -277,8 +288,9 @@ class PoleEditor(tk.Toplevel):
             parent = None
             if kind == 'fit':
                 parent = self.selected_key.split('/fit:')[0] if self.selected_key else None
-            elif self.selected_key and pole_edit.component_pole(self.pole, self.selected_key) == 1:
-                parent = 'twin'  # 복주: 뒤 전주 구성품을 선택한 상태면 뒤 전주에 추가
+            elif ((self.selected_key and pole_edit.component_pole(self.pole, self.selected_key) == 1)
+                  or (not self.selected_key and getattr(self, 'which', None) == pole_units.REAR)):
+                parent = 'twin'  # 복주: 뒤 전주(구성품 또는 테이블의 '-B' 행)를 선택한 상태면 뒤 전주에 추가
             self.selected_key = pole_edit.add_component(self.runner, self.pole, kind, name or None, index, offset,
                                                         rotation, parent=parent,
                                                         equipment_type=self.eqtype_var.get().strip() or '기타장비')

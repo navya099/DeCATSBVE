@@ -6,6 +6,7 @@ from core.pole.manual_pole_processor import ManualPoleProcessor
 from core.structure.define_structure import isbridge_tunnel
 from core.model_rebuilder import alignment_for, rebuild
 from core.pole import pole_edit
+from core.pole import pole_units
 from event.events import MODEL_CHANGED, POLE_SELECTED, POLES_SELECTED, WIRE_SELECTED
 from gui.pole_add_ui import PoleADDUI
 from gui.pole_assembler import PoleEditor
@@ -137,22 +138,25 @@ class AutoPoleEditor(tk.Frame):
             print("poledata가 아직 초기화되지 않았습니다.")
             return
 
-        # 본선 데이터 로딩
+        self.refresh_tree()
 
-        for pole in self.runner.poledata.get("main", []):
-            self.tree_main.insert("", "end", values=(
-                pole.post_number, pole.pos, pole.span, pole.gauge,
+    def _fill_tree(self, track):
+        """트랙 테이블 채우기: 실제 전주 단위 (복주는 앞 '-F' / 뒤 '-B' 두 행, 측점도 각 전주 위치).
+        행 iid = PoleUnit.key (전주 uid + 앞/뒤) → 선택·편집·삭제는 iid 로 전주를 찾는다."""
+        tree = self.tree_main if track == "main" else self.tree_sub
+        for row in tree.get_children():
+            tree.delete(row)
+        for unit in pole_units.track_units(self.runner.poledata.get(track, [])):
+            pole = unit.pole
+            tree.insert("", "end", iid=unit.key, values=(
+                unit.label, unit.station, pole.span, pole.gauge,
                 pole.structure, self._section_cell(pole), pole.base_type,
                 pole.radius, pole.pitch, pole.cant, pole.z
             ))
 
-        # 상선 데이터 로딩
-        for pole in self.runner.poledata.get("sub", []):
-            self.tree_sub.insert("", "end", values=(
-                pole.post_number, pole.pos, pole.span, pole.gauge,
-                pole.structure, self._section_cell(pole), pole.base_type,
-                pole.radius, pole.pitch, pole.cant, pole.z
-            ))
+    def unit_of_row(self, track, iid):
+        """테이블 행 → PoleUnit (전주, 앞/뒤)"""
+        return pole_units.find_unit(self.runner.poledata.get(track, []), iid)
 
 
     @staticmethod
@@ -182,6 +186,7 @@ class AutoPoleEditor(tk.Frame):
     def on_model_changed(self):
         """편집용 래퍼(EditablePole/Wire) 재생성, 테이블 갱신, 선택 전주 유지"""
         selected = self.selected_pole.pole if self.selected_pole is not None else None
+        selected_which = getattr(self.selected_pole, 'which', None)
         selected_wire = ((self.selected_wire.wire.track_name, self.selected_wire.wire.pos)
                          if self.selected_wire is not None else None)
         self.create_epoles()
@@ -198,6 +203,7 @@ class AutoPoleEditor(tk.Frame):
             for epoles in self.editable_poles.values():
                 found = next((e for e in epoles if e.pole is selected), None)
                 if found:
+                    found.which = selected_which if getattr(selected, 'twin', None) is not None else None
                     self.selected_pole = found
                     if self.events:
                         self.events.emit(POLE_SELECTED, found)  # 다른 화면도 새 래퍼로 갱신
@@ -206,26 +212,8 @@ class AutoPoleEditor(tk.Frame):
     def refresh_tree(self):
         if not self.runner.poledata:
             return
-
-        # 본선 트리 초기화
-        for row in self.tree_main.get_children():
-            self.tree_main.delete(row)
-        for pole in self.runner.poledata.get("main", []):
-            self.tree_main.insert("", "end", values=(
-                pole.post_number, pole.pos, pole.span, pole.gauge,
-                pole.structure, self._section_cell(pole), pole.base_type,
-                pole.radius, pole.pitch, pole.cant, pole.z
-            ))
-
-        # 상선 트리 초기화
-        for row in self.tree_sub.get_children():
-            self.tree_sub.delete(row)
-        for pole in self.runner.poledata.get("sub", []):
-            self.tree_sub.insert("", "end", values=(
-                pole.post_number, pole.pos, pole.span, pole.gauge,
-                pole.structure, self._section_cell(pole), pole.base_type,
-                pole.radius, pole.pitch, pole.cant, pole.z
-            ))
+        self._fill_tree("main")
+        self._fill_tree("sub")
 
     def load_selected(self):
         selected_epoles = []
@@ -237,8 +225,7 @@ class AutoPoleEditor(tk.Frame):
 
         if tab_text == "본선":
             for sel in self.tree_main.selection():
-                item = self.tree_main.item(sel)
-                epole, ewire = self._handle_selection(item, track="main")
+                epole, ewire = self._handle_selection(sel, track="main")
                 if epole:
                     self.selected_pole = epole
                     selected_epoles.append(epole)
@@ -253,8 +240,7 @@ class AutoPoleEditor(tk.Frame):
 
         elif tab_text == "상선":
             for sel in self.tree_sub.selection():
-                item = self.tree_sub.item(sel)
-                epole, ewire = self._handle_selection(item, track="sub")
+                epole, ewire = self._handle_selection(sel, track="sub")
                 if epole:
                     self.selected_pole = epole
                     selected_epoles.append(epole)
@@ -277,16 +263,24 @@ class AutoPoleEditor(tk.Frame):
             self.events.emit(WIRE_SELECTED, self.selected_wire)
 
 
-    def _handle_selection(self, item, track, fill_entry=True):
-        post_number, pos, span, gauge, structure, section, base_type, radius, pitch, cant, z = item["values"]
-
-        epole = next((e for e in self.editable_poles.get(track, []) if e.pole.pos == pos), None)
+    def _handle_selection(self, iid, track, fill_entry=True):
+        """테이블 행(iid) → (EditablePole, EditableWire). 복주 행이면 EditablePole.which 에 앞(0)/뒤(1)"""
+        tree = self.tree_main if track == "main" else self.tree_sub
+        post_number, station, span, gauge, structure, section, base_type, radius, pitch, cant, z = \
+            tree.item(iid)["values"]
+        unit = self.unit_of_row(track, iid)
+        if unit is None:
+            return None, None
+        pos = unit.pole.pos
+        epole = next((e for e in self.editable_poles.get(track, []) if e.pole is unit.pole), None)
+        if epole is not None:
+            epole.which = unit.which
         ewire = next((w for w in self.editable_wires.get(track, []) if w.wire.pos == pos), None)
 
         if fill_entry and epole:
             self.original_pos = pos
             self.entry_post_number_var.set(post_number)
-            self.entry_pos_var.set(pos)
+            self.entry_pos_var.set(station)
             self.entry_gauge_var.set(gauge)
             self.entry_structure_var.set(structure)
             self.entry_section_var.set(section)
@@ -369,7 +363,8 @@ class AutoPoleEditor(tk.Frame):
         tree = self.tree_main if track == 'main' else self.tree_sub
         self.notebook.select(0 if track == 'main' else 1)
         for item in tree.get_children():
-            if float(tree.item(item, 'values')[1]) == float(pos):
+            unit = self.unit_of_row(track, item)
+            if unit is not None and float(unit.pole.pos) == float(pos):
                 tree.selection_set(item)
                 tree.see(item)
                 self.load_selected()
@@ -421,12 +416,11 @@ class AutoPoleEditor(tk.Frame):
 
         selected_item = tree.selection()
         if selected_item:
-            values = tree.item(selected_item[0], "values")
-            post_number = values[0]
-
-            pole = next((p for p in poles if p.post_number == post_number), None)
-            if pole is None:
+            unit = self.unit_of_row(self._current_track(), selected_item[0])
+            if unit is None:
                 return
+            pole = unit.pole
+            post_number = pole.post_number
             try:
                 notices = pole_edit.delete_pole(self.runner, pole)
             except ValueError as e:
@@ -461,9 +455,11 @@ class AutoPoleEditor(tk.Frame):
         old_value = item["values"][col_index]
 
         # 구간(에어조인트·에어섹션) 전주는 표에서 다시 만들면 일반개소 구성품으로 바뀌므로 막음
-        pos = float(item["values"][1])
-        pole = next((p for p in self.runner.poledata.get(track, []) if float(p.pos) == pos), None)
-        if pole is not None and pole.section is not None:
+        unit = self.unit_of_row(track, row_id)
+        pole = unit.pole if unit is not None else None
+        if pole is None:
+            return
+        if pole.section is not None:
             messagebox.showinfo('전주 편집', f'{pole.post_number} 은(는) {pole.section} 전주입니다.\n'
                                            "구간 전주는 '구간 편집'에서 구간을 삭제한 뒤 편집하세요.")
             return

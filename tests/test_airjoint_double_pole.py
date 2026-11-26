@@ -241,3 +241,26 @@ def test_ui_feeder_overrides_dataset():
     assert runner.dataprocessor.get_double_pole_settings()['feeder'] == 'front'
     with pytest.raises(ValueError):
         run_case(airjoint_type='double_pole', double_pole_feeder='middle')
+
+
+def test_pole_units_labels_stations_and_coords(tmp_path):
+    """테이블·배치도용 실제 전주 단위: 복주 지지점은 '-F'(앞)·'-B'(뒤) 두 전주, 각자 측점·좌표"""
+    from core.pole import pole_units as pu
+    runner = run_case(airjoint_type='double_pole', double_pole_spacing=1.6)
+    poles = runner.poledata['main']
+    al = alignment_for(runner, 'main')
+    mid = next(p for p in paired(poles) if p.section.role == SectionType.AJ_MIDDLE)
+    front, rear = pu.units(mid)
+    assert (front.label, rear.label) == (f'{mid.post_number}-F', f'{mid.post_number}-B')
+    assert (front.station, rear.station) == (mid.pos - 0.8, mid.pos + 0.8)
+    fx, fy = front.coord(al)
+    rx, ry = rear.coord(al)
+    assert abs(((rx - fx) ** 2 + (ry - fy) ** 2) ** 0.5 - 1.6) < 0.01          # 두 전주 사이 1.6m
+    normal = next(p for p in poles if p.twin is None)
+    assert [u.label for u in pu.units(normal)] == [normal.post_number] and pu.units(normal)[0].station == normal.pos
+    assert len(pu.track_units(poles)) == len(poles) + len(paired(poles))
+    # 행 식별자 → 전주·앞/뒤
+    assert pu.find_unit(poles, rear.key) == rear and pu.find_unit(poles, 'nope|') is None
+    # CSV 주석에도 앞/뒤 전주 번호
+    text = outputs(runner, tmp_path, 'out')['main_pole.txt']
+    assert f',;{mid.post_number}-F (복주 앞 전주)' in text and f',;{mid.post_number}-B (복주 뒤 전주)' in text

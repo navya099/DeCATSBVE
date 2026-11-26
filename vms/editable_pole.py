@@ -7,6 +7,7 @@ class EditablePole:
     def __init__(self, pole, structure_list=None, curve_list=None, pitch_list=None, polyline_with_sta=None,
                  prev_pole=None, next_pole=None):
         self.pole = pole
+        self.which = None   # 복주 지지점에서 선택한 전주: None(전체·단주) / 0 앞 / 1 뒤 (core.pole.pole_units)
         self.polyline_with_sta = polyline_with_sta
         self.prev_pole = prev_pole
         self.next_pole = next_pole
