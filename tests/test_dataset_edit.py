@@ -30,8 +30,7 @@ def test_standard_datasets_validate(speed):
     d = DatasetDocument.from_standard(speed)
     assert d.is_standard and errors(d) == []
     warnings = [p.where for p in d.validate() if p.level == 'warning']
-    if speed == 350:  # 350 표준에는 에어섹션 브래킷 인덱스가 없음 → 에어섹션 사용 시에만 필요하므로 경고
-        assert any('에어섹션' in w for w in warnings)
+    assert not any('에어섹션' in w for w in warnings)  # 모든 표준에 에어섹션 브래킷 인덱스 있음
 
 
 def test_set_value_keeps_types(doc):

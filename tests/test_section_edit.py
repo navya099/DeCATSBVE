@@ -168,3 +168,33 @@ def test_registering_new_airjoint_type():
         assert all(p.section is None for p in found.poles)
     finally:
         se.SECTION_KINDS.pop('airjoint_test', None)
+
+
+@pytest.mark.parametrize('kind_id', ['airsection_single', 'airsection_double'])
+def test_airsection_at_350_uses_standard_bracket_index(kind_id):
+    """350km/h 표준 데이터셋 에어섹션 브래킷: 토공 994/995, 교량 996/997, 터널 998/999"""
+    cfg = headless.load_config(os.path.join(CASES, 'synthetic_single_250', 'case.json'))
+    cfg['speed'] = 350
+    runner = headless.build_runner(cfg)
+    with contextlib.redirect_stdout(io.StringIO()):
+        runner.run()
+    expected = {'토공': {994, 995}, '교량': {996, 997}, '터널': {998, 999}}
+    poles = runner.poledata['main']
+    n = se.SECTION_KINDS[kind_id].n_poles
+    seen = set()
+    for structure in expected:
+        start = next((poles[i] for i in range(3, len(poles) - n)
+                      if all(poles[j].section is None and poles[j].flowstop is None
+                             and poles[j].structure == structure for j in range(i, i + n))), None)
+        if start is None:
+            continue
+        plan = se.plan_add(runner, 'main', start.pos, kind_id)
+        assert plan.ok, plan.problems
+        se.apply_add(runner, plan, alignment_for)
+        quiet(rebuild, runner)
+        group = next(i for i in se.find_sections(runner, 'main') if i.start_pos == start.pos).poles
+        indices = {b.index for p in group for b in p.brackets}
+        assert indices & expected[structure], (structure, indices)
+        assert not indices & (set().union(*expected.values()) - expected[structure])
+        seen.add(structure)
+    assert '토공' in seen
