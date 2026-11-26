@@ -64,10 +64,17 @@ class BaseRunner:
         self.double_pole_spacing = None
         # 복주 급전선설비: 'both' 두 전주 | 'front' 앞 전주만 | None 데이터셋 airjoint.double_pole.feeder
         self.double_pole_feeder = None
+        # 처리 중 빠진 전주·전선 (오류 메시지). 화면에 경고로 알림 — 출력만 하고 넘어가지 않도록
+        self.pole_errors = []    # 자동 배치 전주 생성 실패 (실행 때)
+        self.wire_errors = []    # 전선 생성 실패 (실행·재계산 때마다 갱신)
         self.alignment = None
         self.sub_rail_key: int | None = None
         # 전선 상세 편집 내용 (경간 단위 지지점 수정·전선 추가/삭제): core/wire/wire_overrides.py 참고
         self.wire_overrides = {}
+
+    def processing_errors(self):
+        """빠진 전주·전선 오류 메시지 목록 (구버전 .dat 에는 속성이 없을 수 있음)"""
+        return list(getattr(self, 'pole_errors', None) or []) + list(getattr(self, 'wire_errors', None) or [])
 
     def apply_dataset_options(self):
         """실행 설정 중 데이터셋 값을 덮어쓰는 항목을 데이터셋 겟터에 반영 (복주 쌍 전주 간격·급전선설비)"""

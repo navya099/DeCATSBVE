@@ -168,10 +168,19 @@ class AutoPoleEditor(tk.Frame):
         return 'main' if self.notebook.tab(self.notebook.select(), "text") == "본선" else 'sub'
 
     def commit_change(self, message=None):
-        """runner.poledata 를 고친 뒤 호출: 파생 데이터 재계산 → MODEL_CHANGED 로 모든 화면 갱신"""
+        """runner.poledata 를 고친 뒤 호출: 파생 데이터 재계산 → MODEL_CHANGED 로 모든 화면 갱신.
+        재계산에서 새로 빠진 전선이 생기면 경고"""
+        before = set(getattr(self.runner, 'wire_errors', None) or [])
         rebuild(self.runner)
         if message:
             self.runner.log(message)
+        new_errors = [e for e in (self.runner.wire_errors or []) if e not in before]
+        if new_errors:
+            for e in new_errors:
+                self.runner.log(f'⚠️ {e}')
+            messagebox.showwarning('전선 생성 오류', '편집 후 다음 경간의 전선이 만들어지지 않았습니다.\n\n'
+                                   + '\n'.join(new_errors[:15])
+                                   + (f'\n… 외 {len(new_errors) - 15}건' if len(new_errors) > 15 else ''))
         self.notify_model_changed()
 
     def notify_model_changed(self):

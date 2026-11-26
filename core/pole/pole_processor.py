@@ -12,6 +12,8 @@ from core.alignment.alignment import as_alignment
 class PoleProcessor:
     def __init__(self):
         self.poles = []
+        # 전주 생성에 실패해 빠진 전주 목록 ("[트랙] 측점m: 오류") → runner.pole_errors 로 화면에 알림
+        self.errors = []
 
     def _process_single_track(self, positions, structure_list, curve_list, pitchlist,
                               dataprocessor, airjoint_list, polyline_with_sta, idxlib,
@@ -103,6 +105,8 @@ class PoleProcessor:
 
                 poles.append(pole)
             except Exception as e:
+                message = f"[{track_name}] {positions[i]}m 전주 생성 실패 (전주가 빠짐): {e}"
+                self.errors.append(message)
                 print(f"[{track_name}] process_pole 실행 중 에러 발생: {e}")
         return poles
 

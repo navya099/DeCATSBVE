@@ -28,6 +28,8 @@ class AutoRunner(BaseRunner):
 
         self.wire_processor = WireProcessor(self.dataprocessor, self.alignment_by_track, self.poledata, self.curvelist)
         self.wire_data = self.wire_processor.process_to_wire()
+        self.pole_errors = list(self.pole_processor.errors)
+        self.wire_errors = list(self.wire_processor.errors)
 
         #추가설비(흐름방지장치)
         self.anticreeping_pr = AnticreepingDeviceProcessor(self.poledata, self.wire_data, self.airjoint_list, self.wire_processor)
@@ -41,4 +43,9 @@ class AutoRunner(BaseRunner):
         else:
             self.log(f"전주 개수: 본선={main_count}개, 상선={sub_count}개")
         self.log(f"마지막 전주 위치: {self.positions_by_track['main'][-1]}m (종점: {int(self.end_station)}m)")
+        errors = self.processing_errors()
+        if errors:
+            self.log(f'⚠️ 처리 오류 {len(errors)}건 — 아래 전주·전선이 출력에서 빠졌습니다:')
+            for message in errors:
+                self.log(f'  {message}')
         self.log('모든 작업 완료')

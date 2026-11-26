@@ -15,10 +15,12 @@ class BVECSV:
         self.wiredata = wiredata
         self.track_index = track_index
         self.lines = []
+        self.errors = []   # CSV 에서 빠진 전주·전선 ("측점: 오류") → 저장 시 알림
 
     def create_pole_csv(self):
         """전주 구문 생성 메서드"""
         self.lines = []
+        self.errors = [e for e in self.errors if '전주 CSV' not in e]
 
         def write_equipment(pos, eqs):
             for eq in eqs:
@@ -145,10 +147,9 @@ class BVECSV:
                     write_base(pos, mast)
                     write_brackets(pos, brs)
 
-            except AttributeError as e:
-                print(f"poledata 데이터 누락: {pos}, 오류: {e}")
             except Exception as e:
-                print(f"예상치 못한 오류: {pos}, 오류: {e}")
+                self.errors.append(f'{pos}m 전주 CSV 일부 누락: {e}')
+                print(f"poledata 데이터 누락: {pos}, 오류: {e}")
 
         print('create_pole_csv 실행이 완료됐습니다.')
         return self.lines
@@ -158,12 +159,14 @@ class BVECSV:
         전선 구문 생성 메서드
         """
         self.lines = []  # 코드 실행전 초기화
+        self.errors = [e for e in self.errors if '전선 CSV' not in e]
         # zip 으로 순서대로 짝지으면 전선이 하나라도 빠질 때 이후 전선이 모두 한 경간씩 밀린다
         poles_by_pos = {p.pos: p for p in self.poledata}
         pos = None
         for wire in self.wiredata:
             pole = poles_by_pos.get(wire.pos)
             if pole is None:
+                self.errors.append(f'{wire.pos}m 전선에 해당하는 전주가 없어 전선 CSV 누락')
                 print(f"전선에 해당하는 전주 없음: {wire.pos}")
                 continue
             try:
@@ -185,10 +188,9 @@ class BVECSV:
                         self.lines.append(f'{insulator.pos},.freeobj {self.track_index};{insulator.index};'
                                           f'{insulator.offset[0]};{insulator.offset[1]};'
                                           f'{insulator.yaw};{insulator.pitch};{insulator.roll};,;{insulator.type}\n')
-            except AttributeError as e:
-                print(f"Wire 데이터 누락: index {pos}, 오류: {e}")
             except Exception as e:
-                print(f"예상치 못한 오류: index {pos}, 오류: {e}")
+                self.errors.append(f'{pos}m 전선 CSV 일부 누락: {e}')
+                print(f"Wire 데이터 누락: index {pos}, 오류: {e}")
 
         print('create_wire_csv실행이 완료됐습니다.')
         return self.lines

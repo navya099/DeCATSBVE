@@ -80,6 +80,14 @@ def section_label(parent, text):
     return f
 
 
+def show_errors(title, header, errors, limit=15):
+    """오류 목록 경고창 (많으면 앞 limit 개 + 나머지 개수, 전체는 로그에)"""
+    lines = list(errors[:limit])
+    if len(errors) > limit:
+        lines.append(f'… 외 {len(errors) - limit}건 (전체는 로그 참고)')
+    messagebox.showwarning(title, header + '\n\n' + '\n'.join(lines))
+
+
 def make_entry(parent, label_text, variable, width=9):
     """라벨 + Entry 쌍"""
     f = tk.Frame(parent, bg=PALETTE["surface2"])
@@ -686,8 +694,14 @@ class AutoPoleApp(tk.Tk):
             self.load_dataset()
             self.runner.run()
             self._show_new_runner()
-            self._set_status("생성 완료", "success")
-            self.log_append("✅ 전주 배치 완료", "SUCCESS")
+            errors = self.runner.processing_errors()
+            if errors:
+                self._set_status(f"생성 완료 — 오류 {len(errors)}건", "warning")
+                self.log_append(f"⚠️ 전주 배치 완료, 처리 오류 {len(errors)}건 (빠진 전주·전선)", "WARN")
+                show_errors('처리 오류', '다음 전주·전선이 만들어지지 않아 출력에서 빠졌습니다.', errors)
+            else:
+                self._set_status("생성 완료", "success")
+                self.log_append("✅ 전주 배치 완료", "SUCCESS")
         except Exception as e:
             messagebox.showerror('에러', f'러너 실행중 오류가 발생했습니다.\n{e}')
             self._set_status("실행 오류", "error")
@@ -730,8 +744,17 @@ class AutoPoleApp(tk.Tk):
                     write_to_file(self.runner.pole_path_sub, s)
                     write_to_file(self.runner.wire_path_sub, s2)
                 self.runner.log("txt 저장 성공!")
-                self._set_status("CSV 저장 완료", "success")
-                self.log_append(f"✅ CSV 저장 완료 → {main_path}", "SUCCESS")
+                errors = list(self.runner.polesaver_main.errors)
+                if self.runner.track_mode == "double":
+                    errors += [f'[상선] {e}' for e in self.runner.polesaver_sub.errors]
+                errors = self.runner.processing_errors() + errors
+                if errors:
+                    self._set_status(f"CSV 저장 — 누락 {len(errors)}건", "warning")
+                    self.log_append(f"⚠️ CSV 저장 완료 → {main_path} (누락 {len(errors)}건)", "WARN")
+                    show_errors('CSV 저장', '저장은 했지만 다음 항목이 출력에서 빠졌습니다.', errors)
+                else:
+                    self._set_status("CSV 저장 완료", "success")
+                    self.log_append(f"✅ CSV 저장 완료 → {main_path}", "SUCCESS")
             else:
                 messagebox.showerror('저장 오류', '경로가 지정되지 않았습니다.')
         except Exception as e:

@@ -17,9 +17,12 @@ class WireProcessor:
         self.fpwp = FPWWireProcessor(self.pro)
         self.exp = ExtraWireProcessor(self.pro)
         self.curve_list = curve_list
+        # 전선 생성에 실패해 빠진 경간 목록 ("[트랙] 측점m: 오류") → runner.wire_errors 로 화면에 알림
+        self.errors = []
 
     def process_to_wire(self):
         results = {}
+        self.errors = []
         for track_name, poles in self.poledata_by_track.items():
             wires = []
             wirehandler = WireSectionHandler(self.com, self.pro, self.polyline_by_track[track_name], self.curve_list)
@@ -45,6 +48,7 @@ class WireProcessor:
                         wire.add_wire(self.exp.process(pole, self.polyline_by_track[track_name], pitch_angle))
                     wires.append(wire)
                 except Exception as e:
+                    self.errors.append(f"[{track_name}] {pole.pos}m 경간 전선 생성 실패 (전선이 빠짐): {e}")
                     print(f"[{track_name}] at {pole.pos} process_to_wire 실행 중 에러 발생: {e}")
                     continue
             results[track_name] = wires

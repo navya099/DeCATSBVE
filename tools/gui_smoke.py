@@ -22,6 +22,7 @@ case = sys.argv[1]
 from tkinter import messagebox  # noqa: E402
 messagebox.showerror = lambda *a, **k: print('  [messagebox]', a)
 messagebox.showinfo = lambda *a, **k: None
+messagebox.showwarning = lambda *a, **k: print('  [warning]', a[0])
 messagebox.askyesno = lambda *a, **k: True  # 확인 대화상자는 '예'
 
 from gui.maingui import AutoPoleApp  # noqa: E402
